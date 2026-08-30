@@ -1,0 +1,38 @@
+# kajoe_bilder – Datenbank
+#
+# Der Port ist ausdruecklich an 127.0.0.1 gebunden, nicht an 0.0.0.0.
+# Docker schreibt eigene iptables-Regeln in die Kette DOCKER; ohne die
+# vorangestellte Adresse steht der Port am ufw vorbei im ganzen Netz offen.
+#
+# Weitere Projekte auf diesem Rechner bekommen 5433, 5434, … (siehe CLAUDE.md).
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: kajoe_bilder_db
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Ortszeit ist Sache der Anwendung (aufnahme_lokal). Die Datenbank
+      # selbst arbeitet in UTC wie der Rest des Systems.
+      TZ: UTC
+      PGTZ: UTC
+    volumes:
+      # Benanntes Volume, kein Pfad aus dem Projektverzeichnis: so faellt das
+      # Datenverzeichnis weder einem git clean noch einem Umzug des Repos zum
+      # Opfer. Name ausgeschrieben, damit er nicht am Verzeichnisnamen haengt.
+      - kajoe_bilder_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  kajoe_bilder_db:
+    name: kajoe_bilder_db

@@ -1,0 +1,21 @@
+# Benutzerdienst, kein Systemdienst: das Sicherungsverzeichnis liegt im Home
+# und der Docker-Zugriff haengt an der Gruppenmitgliedschaft von jsaeger.
+#
+# Installation siehe systemd/LIESMICH.md. Ohne
+#     loginctl enable-linger jsaeger
+# haelt systemd die Benutzerdienste nach dem Abmelden an und der Timer feuert nie.
+
+[Unit]
+Description=kajoe_bilder – taegliche Datenbanksicherung
+Documentation=file:///home/jsaeger/webspace/kajoe_bilder/tools/sicherung.sh
+# Ohne laufenden Docker-Dienst gibt es nichts zu sichern.
+After=docker.service
+
+[Service]
+Type=oneshot
+# systemd kennt ~/.bashrc nicht. Voller Pfad, und PATH ausdruecklich setzen.
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+WorkingDirectory=/home/jsaeger/webspace/kajoe_bilder
+ExecStart=/home/jsaeger/webspace/kajoe_bilder/tools/sicherung.sh
+# Der Container braucht nach einem Neustart des Rechners einen Moment.
+TimeoutStartSec=900

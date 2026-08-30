@@ -1,0 +1,9 @@
+.env
+node_modules/
+.next/
+__pycache__/
+*.pyc
+
+# Datenbanksicherungen liegen im Projektverzeichnis, gehoeren aber nicht
+# ins Repository.
+sicherung/

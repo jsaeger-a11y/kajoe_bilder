@@ -1,0 +1,16 @@
+# Taeglich um 03:00 Uhr. Die Systemzeit ist UTC (siehe CLAUDE.md), also ist
+# 03:00 hier auch 03:00 UTC – nicht Ortszeit.
+
+[Unit]
+Description=kajoe_bilder – Datenbanksicherung taeglich um 03:00
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+# Verpasste Laeufe nachholen: der Rechner kann um 03:00 aus gewesen sein.
+Persistent=true
+# Nicht alle Timer auf dem Rechner gleichzeitig losschicken.
+RandomizedDelaySec=300
+Unit=kajoe-sicherung.service
+
+[Install]
+WantedBy=timers.target
