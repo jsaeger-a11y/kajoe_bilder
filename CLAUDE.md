@@ -189,6 +189,8 @@ unten, weil sie nach einem OneDrive-Abgleich meist das Kopierdatum ist. Welche Q
 gegriffen hat, steht in `zeitquelle` – ohne diese Spalte ist bei Bildern ohne EXIF
 später nicht mehr zu klären, ob ein Datum etwas taugt.
 
+Der Zeitstempel im OneDrive-Dateinamen ist UTC, nicht Ortszeit. Gemessen an 587 Dateien mit DateTimeOriginal und OffsetTimeOriginal: ausnahmslos gilt DateTimeOriginal = Dateiname + Zeitversatz. Wer den Namen als Ortszeit liest, legt ein Bild von Silvester 00:30 Berliner Zeit ins falsche Jahr — genau der Fehler, gegen den die Ortszeitregel gedacht ist. Für diese Dateien wird deshalb aufnahme_utc aus dem Namen gefüllt und aufnahme_lokal über Europe/Berlin gerechnet. zeitversatz bleibt dabei leer, weil ihn kein Gerät geschrieben hat — daran ist die Annahme später erkennbar. Für Android-Muster (IMG_, PXL_) gilt weiterhin Ortszeit; die Zone steht als einordnen.ZONE an einer Stelle.
+
 ### Das Original wird nach dem Einlesen nie wieder angefasst
 
 Alles, was die Oberfläche zeigt oder ausliefert, ist eine Ableitung. Ein Ingest, der
@@ -208,7 +210,7 @@ auf die Platte. Also: HEIC bleibt Archiv, JPEG ist Anzeige und Download.
 Kein Druckdienstleister nimmt HEIC an – die Umwandlung ist keine Notlösung, sondern
 der Zweck.
 
-### Vier Dinge, die bei der Umwandlung schiefgehen
+### sechs Dinge, die bei der Umwandlung schiefgehen
 
 **Farbprofil.** Das iPhone nimmt in **Display P3** auf. Wer naiv umwandelt, bekommt
 flaue, verschobene Farben – rote Blumen und Sonnenuntergänge sichtbar daneben. Für den
@@ -226,6 +228,9 @@ Der eine echte Verlust: iPhone-HEIC ist **10 Bit**, JPEG kann 8. Bei Himmelsverl
 theoretisch Streifenbildung. Im Kalenderdruck kein Thema – und genau deshalb bleibt
 das Original liegen.
 
+-Orientation#=1 mit Gatter, nie ohne. Ohne das # deutet exiftool den Wert als Klartext, findet die „1" in der Beschreibung „Rotate 180" und schreibt eine 3. Das Bild kommt beim Empfänger auf dem Kopf an, und im Download-JPEG fällt das erst auf, wenn jemand es öffnet.
+
+faststart wird an der Boxreihenfolge geprüft, nicht am Fundort von mdat. Mit Schalter ftyp moov free mdat, ohne ihn ftyp free mdat moov. Eine Suche nach mdat in den ersten Kilobytes misst etwas anderes und meldet immer dasselbe.
 ### Videos
 
 **Live Photos kommen über OneDrive nicht an.** In der Messung von 2026 gab es keine
@@ -386,3 +391,4 @@ Täglicher `pg_dump` ab Phase 0, nicht später.
 - Was nur im Browser passiert, wird auch im Browser geprüft, nicht am ausgelieferten
   Markup. Bei React sagt `defaultChecked` im Quelltext nichts darüber, was das Formular
   tatsächlich abschickt
+
