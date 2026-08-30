@@ -9,10 +9,11 @@
 import "server-only";
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 import { abfrage, eineZeile } from "./db";
 import { COOKIE_SICHER } from "./umgebung";
+import { pruefeTunnelOhneSecure } from "./warnung";
 
 export const COOKIE_NAME = "sitzung";
 
@@ -67,6 +68,10 @@ export async function sitzungAnlegen(
  * wirkt sofort und nicht erst, wenn irgendwann ein Wertpapier ablaeuft.
  */
 export async function angemeldet(): Promise<Angemeldet | null> {
+  // Hier laeuft jede Seite, jede Action und jede Route vorbei – die Stelle,
+  // an der die Warnung vor "Tunnel ohne Secure" den echten Fall sieht.
+  pruefeTunnelOhneSecure((await headers()).get("x-forwarded-proto"));
+
   const kiste = await cookies();
   const kennung = kiste.get(COOKIE_NAME)?.value;
   if (!kennung) return null;

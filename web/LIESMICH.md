@@ -185,3 +185,104 @@ web/
 │       └── api/verwaltung/benutzer/route.ts
 └── werkzeug/benutzer.ts     Konten von der Kommandozeile
 ```
+
+---
+
+# Galerie (Phase 2b)
+
+| Adresse | was |
+|---|---|
+| `/` | Übersicht: Zahlen je Jahr, je Herkunft, Platte |
+| `/galerie` | Gitter, nach Jahr und Monat, neueste zuerst |
+| `/bild/<nr>` | Einzelansicht mit Angaben und Blättern |
+| `/datei/<nr>/<art>` | liefert `vorschau`, `ansicht` oder `wiedergabe` |
+| `/api/bild/<nr>/wiedergabe` | erzeugt die abspielbare Fassung (POST) |
+
+## Ausliefern der Ableitungen
+
+**Nicht aus `public/`.** Was dort liegt, liefert Next an jeden aus, der die
+Adresse kennt. Die Ableitungen liegen unter `/data/kajoe_bilder/abgeleitet/`
+und gehen nur an Angemeldete – geprüft bei **jeder** Anfrage, nicht nur beim
+Aufbau der Galerie. Ein Lesezeichen überlebt das Abmelden.
+
+**Der Pfad kommt nie aus der Adresse.** Aus der Adresse kommt eine Nummer; den
+Pfad baut `src/lib/dateien.ts` aus Jahr, Monat und `sha256` der zugehörigen
+Zeile. Damit gibt es keinen Weg über `../..` und keinen Weg zum Original: die
+Art wird gegen eine Liste von genau drei Werten geprüft, bevor überhaupt in die
+Datenbank gesehen wird.
+
+`Cache-Control: private, max-age=31536000, immutable` – `private`, weil die
+Datei einer angemeldeten Person gehört und in keinem gemeinsamen
+Zwischenspeicher landen darf; `immutable`, weil der Dateiname der `sha256` des
+Inhalts ist und sich nie ändert.
+
+Videos werden mit **Range-Unterstützung** ausgeliefert (206 und
+`Content-Range`). Ohne sie springt der Betrachter beim Spulen nicht, sondern
+lädt von vorn.
+
+## Bewusst `<img>` statt `next/image`
+
+Der Bildzuschnitt von Next holt die Datei serverseitig **ohne** das
+Sitzungscookie und liefe damit gegen unsere 401. Die Vorschau ist ohnehin schon
+in Phase 1b auf 300 px gerechnet – es gibt nichts mehr zu optimieren.
+
+## Filter
+
+Der Filterzustand steht **in der Adresse**, nicht im Browser: sonst lässt sich
+eine Ansicht nicht wiederfinden und der Zurück-Knopf tut nicht, was er soll.
+`suchtext()` in `src/lib/galerie.ts` baut ihn, `filterAusSuche()` liest ihn
+zurück und prüft dabei jeden Wert.
+
+**Vorgabe ist `herkunft=iphone`.** Damit das kein stiller Filter ist, steht
+über der Leiste immer „665 von 922 Aufnahmen – es wird gefiltert" samt Link auf
+alles. Zu jedem Filterwert steht die Trefferzahl, jeweils unter den *übrigen*
+Filtern – deshalb `bedingung(filter, ausser)`.
+
+Gitter, Trefferzahlen und das Blättern in der Einzelansicht benutzen dieselbe
+`bedingung()`. Zwei Fassungen derselben Bedingung laufen früher oder später
+auseinander, und dann springt man beim Blättern aus der Auswahl heraus.
+
+Geblättert wird über den Schlüssel `(aufnahme_lokal, id)` statt über `OFFSET`:
+das bleibt richtig, auch wenn zwei Aufnahmen dieselbe Sekunde tragen.
+
+`SEITENGROESSE` steht an einer Stelle (60). Bei 922 Zeilen fällt das nicht auf,
+bei 14.000 schon.
+
+## Woher das Datum kommt
+
+Bei `zeitquelle != 'exif'` ist das Datum eine Herleitung und keine Messung. Die
+Einzelansicht schreibt das dazu, mit dem jeweiligen Grund – bei
+`dateiname` also auch, dass der Name die UTC-Zeit trägt und nach
+`Europe/Berlin` umgerechnet wurde. Betroffen sind 114 der 922 Aufnahmen
+(12,4 %). Wer im Kalender einen Monat falsch erwischt, soll die Möglichkeit
+gehabt haben, es zu sehen.
+
+## Videos abspielen
+
+Die Wiedergabefassung entsteht **beim ersten Aufruf**. Gerechnet wird nicht in
+Node, sondern über `tools/wiedergeben.sh` → `ingest/ableitung.py` aus Phase 1b:
+zwei Fassungen derselben ffmpeg-Zeile laufen auseinander, und die eine ist
+gemessen und geprüft.
+
+Solange gerechnet wird, sagt die Seite das mit einer mitlaufenden
+Sekundenanzeige. Gemessen an einem Video von 361 s: **32 Sekunden über VAAPI**,
+danach steht `wiedergabe_erzeugt` auf `TRUE` und der zweite Aufruf antwortet in
+10 ms.
+
+Zwei Betrachter, die dasselbe Video öffnen, lösen **einen** ffmpeg-Lauf aus;
+der zweite hängt sich über eine `Map` von Versprechen an den ersten.
+
+**Die Fassung ist groß.** Bei `VAAPI_QP = 26` wurden aus 333 MB HEVC 378 MB
+H.264 – rund 8,4 Mbit/s. Für einen Tunnel ist das viel; `qp 28` wären rund
+5,9 Mbit/s. Die Zahl steht in `ingest/ableitung.py` an einer Stelle.
+
+## Mobil
+
+Mobil zuerst gebaut: zwei Spalten auf dem Telefon, mehr sobald Platz da ist
+(`grid-template-columns: repeat(auto-fill, minmax(140px, 1fr))`). Keine festen
+Pixelbreiten, Tippziele mindestens 2,5 rem hoch, breite Tabellen scrollen in
+sich selbst statt die Seite breit zu machen.
+
+**Auf einem echten Telefon ist das nicht geprüft** – dafür fehlt hier das
+Gerät. Geprüft sind nur die Voraussetzungen: Viewport-Angabe, keine festen
+Breiten, Umbruch der Kopfleiste, Größe der Tippziele.

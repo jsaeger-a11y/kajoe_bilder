@@ -41,6 +41,7 @@ export default async function Benutzerverwaltung() {
       <Kopf wer={wer} />
       <h1>Benutzer</h1>
 
+      <div className="tabellenrahmen">
       <table>
         <thead>
           <tr>
@@ -105,6 +106,7 @@ export default async function Benutzerverwaltung() {
           ))}
         </tbody>
       </table>
+      </div>
 
       <p className="leise">
         Konten werden abgeschaltet, nicht gelöscht – sonst verwaisen später die

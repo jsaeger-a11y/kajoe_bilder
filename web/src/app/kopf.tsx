@@ -12,6 +12,7 @@ export default function Kopf({ wer }: { wer: Angemeldet }) {
     <div className="leiste">
       <nav>
         <Link href="/">Übersicht</Link>
+        <Link href="/galerie">Galerie</Link>
         <Link href="/konto">Mein Konto</Link>
         {wer.rolle === "verwalter" ? <Link href="/verwaltung/benutzer">Benutzer</Link> : null}
       </nav>

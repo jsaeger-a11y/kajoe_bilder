@@ -63,6 +63,46 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+titel "Weboberflaeche"
+
+if systemctl --user list-unit-files kajoe-web.service >/dev/null 2>&1; then
+    printf '  %-14s %s / %s\n' "Dienst" \
+        "$(systemctl --user is-enabled kajoe-web.service 2>&1)" \
+        "$(systemctl --user is-active  kajoe-web.service 2>&1)"
+else
+    echo "  Dienst         nicht eingerichtet – siehe systemd/LIESMICH.md"
+fi
+
+# Die Bindung ist sicherheitsrelevant wie beim Datenbankport: steht hier
+# 0.0.0.0, ist die Oberflaeche am ufw vorbei im ganzen Netz erreichbar.
+WEBPORT=$(ss -tlnH 'sport = :3000' 2>/dev/null | awk '{print $4}' | head -1)
+if [ -n "$WEBPORT" ]; then
+    printf '  %-14s %s' "Port" "$WEBPORT"
+    case "$WEBPORT" in
+        127.0.0.1:*) printf ' – nur lokal, richtig\n' ;;
+        *)           printf ' – ACHTUNG: nicht auf 127.0.0.1 gebunden\n' ;;
+    esac
+else
+    printf '  %-14s %s\n' "Port" "niemand hoert auf 3000"
+fi
+
+# COOKIE_SECURE steht in der .env; ohne Eintrag gilt die Vorgabe im Code (an).
+SICHER=$(grep -E '^COOKIE_SECURE=' "$PROJEKT/.env" 2>/dev/null | tail -1 | cut -d= -f2)
+case "${SICHER:-1}" in
+    0) printf '  %-14s %s\n' "COOKIE_SECURE" "0 – Sitzungscookie OHNE Secure, nur fuers LAN gedacht" ;;
+    *) printf '  %-14s %s\n' "COOKIE_SECURE" "${SICHER:-1 (Vorgabe)} – Sitzungscookie mit Secure" ;;
+esac
+
+if [ "$LAEUFT" = ja ] && [ -r "$PROJEKT/.env" ]; then
+    ZEILE=$(docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$CONTAINER" \
+        psql -qAt -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+            SELECT count(*) FILTER (WHERE laeuft_ab_am > now()) || ' laufend, ' ||
+                   count(*) FILTER (WHERE laeuft_ab_am <= now()) || ' abgelaufen'
+              FROM sitzung" 2>/dev/null)
+    printf '  %-14s %s\n' "Sitzungen" "${ZEILE:-?}"
+fi
+
+# ---------------------------------------------------------------------------
 titel "Plattenplatz"
 
 df -h --output=target,size,used,avail,pcent / "$DATEN" 2>/dev/null \

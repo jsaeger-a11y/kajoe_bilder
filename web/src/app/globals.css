@@ -51,7 +51,7 @@ button {
   background: var(--feld); color: inherit; font: inherit; cursor: pointer;
 }
 button.haupt { background: var(--betont); border-color: var(--betont); color: var(--grund); }
-button.klein { margin-top: 0; padding: .25rem .5rem; font-size: .85rem; }
+button.klein { margin-top: 0; min-height: 2.25rem; padding: .3rem .6rem; font-size: .85rem; }
 
 .fehler { margin: 1rem 0 0; padding: .6rem .75rem; border-radius: 6px;
           border: 1px solid var(--warnung); color: var(--warnung); font-size: .92rem; }
@@ -64,7 +64,133 @@ th { color: var(--leise); font-weight: 500; font-size: .85rem; }
 td form { display: inline; }
 
 .leiste { display: flex; justify-content: space-between; align-items: baseline;
-          gap: 1rem; border-bottom: 1px solid var(--rand); padding-bottom: .75rem; }
-.leiste nav { display: flex; gap: 1rem; font-size: .92rem; }
+          gap: .5rem 1rem; flex-wrap: wrap;
+          border-bottom: 1px solid var(--rand); padding-bottom: .75rem; }
+.leiste nav { display: flex; flex-wrap: wrap; gap: .25rem 1rem; font-size: .95rem; }
+.leiste nav a { display: inline-flex; align-items: center; min-height: 2.5rem; }
 .leise { color: var(--leise); font-size: .9rem; }
 .karte { border: 1px solid var(--rand); border-radius: 8px; padding: 1rem 1.25rem; background: var(--feld); }
+
+/* --- Galerie ------------------------------------------------------------ */
+
+/* Mobil zuerst: zwei Spalten auf dem Telefon, mehr, sobald Platz da ist.
+   Die Person, die den Kalender baut, sitzt nicht am Schreibtischrechner. */
+.gitter {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: .5rem;
+  margin: .5rem 0 1.5rem;
+}
+@media (max-width: 26rem) {
+  .gitter { grid-template-columns: repeat(2, 1fr); gap: .4rem; }
+}
+
+.kachel {
+  position: relative;
+  display: block;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--rand);
+  line-height: 0;
+}
+.kachel img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.kachel:focus-visible { outline: 3px solid var(--betont); outline-offset: 2px; }
+
+.kachel .marke {
+  position: absolute; left: .3rem; bottom: .3rem;
+  display: flex; align-items: center; gap: .25rem;
+  padding: .1rem .35rem; border-radius: 4px;
+  background: rgba(0, 0, 0, .62); color: #fff;
+  font-size: .72rem; line-height: 1.5; font-variant-numeric: tabular-nums;
+}
+.kachel .tag {
+  position: absolute; right: .3rem; top: .3rem;
+  padding: .1rem .35rem; border-radius: 4px;
+  background: rgba(0, 0, 0, .55); color: #fff;
+  font-size: .7rem; line-height: 1.5;
+}
+
+.monatskopf {
+  margin: 1.5rem 0 .25rem; padding-top: .5rem;
+  border-top: 1px solid var(--rand);
+  font-size: 1rem; font-weight: 600;
+}
+.monatskopf span { color: var(--leise); font-weight: 400; font-size: .85rem; }
+
+/* --- Filter ------------------------------------------------------------- */
+
+.filter { margin: .75rem 0 0; }
+.filterzeile {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .35rem;
+  margin: .35rem 0;
+}
+.filterzeile > b { font-size: .8rem; color: var(--leise); font-weight: 500;
+                   min-width: 5.5rem; }
+.marke-filter, .marke-filter:visited {
+  /* Mindestens 2,5 rem hoch: ein Filter, den man auf dem Telefon dreimal
+     danebentippt, ist kein Filter. */
+  display: inline-flex; align-items: center; gap: .3rem;
+  min-height: 2.5rem; padding: .35rem .75rem;
+  border: 1px solid var(--rand); border-radius: 999px;
+  background: var(--feld); color: var(--schrift);
+  font-size: .88rem; text-decoration: none; line-height: 1.2;
+}
+.marke-filter.gewaehlt {
+  background: var(--betont); border-color: var(--betont); color: var(--grund);
+}
+.marke-filter .zahl { color: var(--leise); font-variant-numeric: tabular-nums; }
+.marke-filter.gewaehlt .zahl { color: var(--grund); opacity: .8; }
+
+.hinweis-filter {
+  margin: .75rem 0 0; padding: .5rem .7rem;
+  border-left: 3px solid var(--betont); border-radius: 0 6px 6px 0;
+  background: var(--feld); font-size: .9rem;
+}
+
+/* --- Blaettern ---------------------------------------------------------- */
+
+.blaettern {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: .75rem; margin: 1.5rem 0; flex-wrap: wrap;
+}
+.blaettern a, .blaettern span {
+  display: inline-flex; align-items: center; min-height: 2.75rem;
+  padding: .5rem .9rem; border: 1px solid var(--rand); border-radius: 6px;
+  text-decoration: none; font-size: .9rem;
+}
+.blaettern span { color: var(--leise); border-color: transparent; }
+
+/* --- Einzelansicht ------------------------------------------------------ */
+
+.einzel { display: grid; gap: 1rem; }
+@media (min-width: 52rem) { .einzel { grid-template-columns: 2fr 1fr; align-items: start; } }
+
+.buehne {
+  background: #000; border-radius: 8px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 12rem;
+}
+.buehne img, .buehne video { max-width: 100%; max-height: 80vh; display: block; }
+
+.angaben { font-size: .92rem; }
+.angaben dl { display: grid; grid-template-columns: auto 1fr; gap: .3rem .75rem; margin: 0; }
+.angaben dt { color: var(--leise); }
+.angaben dd { margin: 0; overflow-wrap: anywhere; }
+
+.herleitung {
+  margin-top: .75rem; padding: .5rem .7rem;
+  border-left: 3px solid var(--warnung); border-radius: 0 6px 6px 0;
+  background: var(--feld); font-size: .88rem;
+}
+
+.rechnet { color: var(--leise); font-size: .92rem; padding: 2rem 1rem; text-align: center; }
+
+/* Breite Tabellen scrollen in sich selbst, statt die Seite breit zu machen.
+   Auf einem Telefon ist das der Unterschied zwischen lesbar und unbrauchbar. */
+.tabellenrahmen { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tabellenrahmen table { min-width: 30rem; }
+
+/* Nichts darf die Seite waagerecht ueber den Schirm hinausschieben. */
+html, body { max-width: 100%; overflow-x: hidden; }
+img, video { max-width: 100%; height: auto; }
