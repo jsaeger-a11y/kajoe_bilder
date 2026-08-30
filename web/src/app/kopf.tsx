@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { abmeldenAktion } from "./anmelden/aktionen";
 import type { Angemeldet } from "@/lib/sitzung";
+import { darf } from "@/lib/zugriff";
 
 /**
  * Die Leiste zeigt den Verwaltungspunkt nur Verwaltern. Das ist Bequemlichkeit,
@@ -13,6 +14,8 @@ export default function Kopf({ wer }: { wer: Angemeldet }) {
       <nav>
         <Link href="/">Übersicht</Link>
         <Link href="/galerie">Galerie</Link>
+        <Link href="/listen">Listen</Link>
+        {darf(wer, "loeschen") ? <Link href="/vorgemerkt">Vorgemerkt</Link> : null}
         <Link href="/konto">Mein Konto</Link>
         {wer.rolle === "verwalter" ? <Link href="/verwaltung/benutzer">Benutzer</Link> : null}
       </nav>

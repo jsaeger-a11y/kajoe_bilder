@@ -10,6 +10,8 @@
 import "server-only";
 
 import { abfrage, eineZeile } from "./db";
+import { HOECHSTENS_JE_VORGANG } from "./rechte";
+import { NICHT_GELOESCHT } from "./sichtbar";
 
 /** Seitengroesse an EINER Stelle. Bei 922 Zeilen faellt sie nicht auf, bei 14.000 schon. */
 export const SEITENGROESSE = 60;
@@ -72,7 +74,11 @@ export function filterAusSuche(suche: Suchwerte): Filter {
  * laesst sich eine Ansicht nicht wiederfinden und der Zurueck-Knopf tut nicht,
  * was er soll.
  */
-export function suchtext(filter: Filter, aenderung: Partial<Filter> = {}): string {
+export function suchtext(
+  filter: Filter,
+  aenderung: Partial<Filter> = {},
+  zusatz: string[] = [],
+): string {
   const f = { ...filter, ...aenderung };
   // Seite 1 nur weglassen, wenn nicht ausdruecklich gesetzt.
   const teile: string[] = [];
@@ -82,13 +88,29 @@ export function suchtext(filter: Filter, aenderung: Partial<Filter> = {}): strin
   if (f.typ !== "alle") teile.push(`typ=${f.typ}`);
   if (f.ort !== "alle") teile.push(`ort=${f.ort}`);
   if (f.seite > 1) teile.push(`seite=${f.seite}`);
+  teile.push(...zusatz);
   return teile.length ? `?${teile.join("&")}` : "";
 }
 
-export function galerielink(filter: Filter, aenderung: Partial<Filter> = {}): string {
+export function galerielink(
+  filter: Filter,
+  aenderung: Partial<Filter> = {},
+  zusatz: string[] = [],
+): string {
   // Jede Filteraenderung faengt wieder auf Seite 1 an – sonst landet man auf
   // Seite 7 einer Menge, die nur noch drei Seiten hat.
-  return `/galerie${suchtext(filter, { seite: 1, ...aenderung })}`;
+  return `/galerie${suchtext(filter, { seite: 1, ...aenderung }, zusatz)}`;
+}
+
+/** Ist ueberhaupt etwas eingeschraenkt? Ohne Filter gibt es keine Sammelauswahl. */
+export function istEingeschraenkt(filter: Filter): boolean {
+  return (
+    filter.jahr !== null ||
+    filter.monat !== null ||
+    filter.herkunft !== "alle" ||
+    filter.typ !== "alle" ||
+    filter.ort !== "alle"
+  );
 }
 
 interface Bedingung {
@@ -98,7 +120,7 @@ interface Bedingung {
 
 /** WHERE-Teil ohne das fuehrende WHERE. `ausser` laesst einen Filter weg. */
 export function bedingung(filter: Filter, ausser?: keyof Filter): Bedingung {
-  const teile = ["geloescht_am IS NULL"];
+  const teile = [NICHT_GELOESCHT];
   const werte: unknown[] = [];
 
   if (filter.jahr !== null && ausser !== "jahr") {
@@ -194,7 +216,7 @@ export async function trefferzahlen(filter: Filter): Promise<{
               count(*) AS anzahl FROM bild WHERE ${ohneOrt.text} GROUP BY 1`,
       ohneOrt.werte,
     ),
-    eineZeile<{ anzahl: string }>(`SELECT count(*) AS anzahl FROM bild WHERE geloescht_am IS NULL`),
+    eineZeile<{ anzahl: string }>(`SELECT count(*) AS anzahl FROM bild WHERE ${NICHT_GELOESCHT}`),
   ]);
 
   const zu = <S extends string>(zeilen: { anzahl: string }[], schluessel: S) =>
@@ -265,6 +287,23 @@ export async function nachbarn(
     stelle: Number(davor?.anzahl ?? 0) + 1,
     treffer: Number(gesamt?.anzahl ?? 0),
   };
+}
+
+/**
+ * Alle Kennungen der gefilterten Menge – fuer "alle Treffer waehlen".
+ *
+ * Hoechstens `HOECHSTENS_JE_VORGANG` Stueck. Die Grenze greift damit schon
+ * beim Markieren und nicht erst beim Abschicken: wer zweihundert Bilder
+ * auswaehlt und danach abgewiesen wird, hat die Arbeit umsonst gemacht.
+ */
+export async function alleIds(filter: Filter): Promise<number[]> {
+  const b = bedingung(filter);
+  const zeilen = await abfrage<{ id: number }>(
+    `SELECT id::int AS id FROM bild WHERE ${b.text}
+      ORDER BY aufnahme_lokal DESC, id DESC LIMIT ${HOECHSTENS_JE_VORGANG}`,
+    b.werte,
+  );
+  return zeilen.map((z) => Number(z.id));
 }
 
 export const MONATE = [

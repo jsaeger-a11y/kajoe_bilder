@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# tools/aufraeumen.sh – abgelaufene Sitzungen und alte Anmeldeversuche entfernen.
+# tools/aufraeumen.sh – der Aufraeumlauf.
 #
-# IP-Adressen sind personenbezogene Daten. Nach 90 Tagen faellt der
-# Anmeldeversuch weg, mit ihm die Adresse. Abgelaufene Sitzungen liegen ohnehin
-# nur noch herum.
+# Drei Dinge:
+#   1. abgelaufene Sitzungen entfernen
+#   2. Anmeldeversuche aelter als 90 Tage entfernen – IP-Adressen sind
+#      personenbezogene Daten
+#   3. Dateien zu Bildern, die laenger als 30 Tage vorgemerkt sind, entfernen
+#      (ingest/aufraeumen.py). Die ZEILEN bleiben stehen: sie sind der
+#      Grabstein, an dem der naechste Ingest erkennt, dass die Datei schon
+#      einmal da war.
 #
 # Mehrfach aufrufbar; ein zweiter Lauf findet nichts mehr. Ein Timer kommt
 # spaeter, wenn der Lauf ueber Wochen erprobt ist.
@@ -44,15 +49,14 @@ meldung "Anmeldeversuche aelter als ${ANMELDEVERSUCH_TAGE}d:  $VERSUCHE"
 
 if [ "$nur_zaehlen" = ja ]; then
     meldung "nur gezaehlt, nichts geloescht"
-    exit 0
 fi
 
-if [ "$SITZUNGEN" -gt 0 ]; then
+if [ "$nur_zaehlen" = nein ] && [ "$SITZUNGEN" -gt 0 ]; then
     psql_still -c "DELETE FROM sitzung WHERE laeuft_ab_am <= now()" >/dev/null
     meldung "$SITZUNGEN Sitzung(en) entfernt"
 fi
 
-if [ "$VERSUCHE" -gt 0 ]; then
+if [ "$nur_zaehlen" = nein ] && [ "$VERSUCHE" -gt 0 ]; then
     psql_still -c "DELETE FROM anmeldeversuch
                     WHERE zeitpunkt < now() - interval '$ANMELDEVERSUCH_TAGE days'" >/dev/null
     meldung "$VERSUCHE Anmeldeversuch(e) entfernt"
@@ -62,3 +66,16 @@ fi
 # Buchfuehrung, sondern liest den Stand zurueck.
 meldung "Stand: $(psql_still -c "SELECT count(*) FROM sitzung") Sitzung(en), \
 $(psql_still -c "SELECT count(*) FROM anmeldeversuch") Anmeldeversuch(e)"
+
+# --- Dateien vorgemerkter Bilder ------------------------------------------
+echo
+PYTHON="$PROJEKT/ingest/.venv/bin/python"
+if [ -x "$PYTHON" ]; then
+    if [ "$nur_zaehlen" = ja ]; then
+        "$PYTHON" "$PROJEKT/ingest/aufraeumen.py" --nur-zaehlen
+    else
+        "$PYTHON" "$PROJEKT/ingest/aufraeumen.py"
+    fi
+else
+    echo "ingest/.venv fehlt – Dateien werden nicht aufgeraeumt" >&2
+fi

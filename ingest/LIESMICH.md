@@ -281,3 +281,35 @@ Anmeldung aendern sich davon nicht rueckwirkend – in einer alten Sitzung
 scheitert ffmpeg mit "No VA display found". Entweder neu anmelden oder
 `sg render -c '…'`. `ableitung.vaapi_verfuegbar()` prueft das und sagt es im
 Klartext, statt still auf den Prozessor auszuweichen.
+
+---
+
+# Aufräumen und der Grabstein (Phase 3a)
+
+`ingest/aufraeumen.py` entfernt die Dateien zu Zeilen, deren `geloescht_am`
+länger als dreißig Tage zurückliegt: Original, Vorschau, Ansicht und, falls
+vorhanden, die Wiedergabefassung. Aufgerufen wird es aus
+`tools/aufraeumen.sh` zusammen mit den Sitzungen und Anmeldeversuchen.
+
+**Die Zeile in `bild` bleibt stehen – für immer.** Was verschwindet, sind die
+Dateien; die Zeile behält ihren `sha256` und ihr `geloescht_am`. Danach stehen
+`vorschau_erzeugt` und `wiedergabe_erzeugt` auf `FALSE`, damit die Oberfläche
+keine Ableitung anbietet, die es nicht gibt, und ein zweiter Lauf nichts mehr
+findet.
+
+**Ohne diesen Grabstein wäre das Aussortieren umsonst.** `lauf.py` erkennt eine
+Datei ausschließlich über den `sha256` des Inhalts. Findet er eine Zeile mit
+gesetztem `geloescht_am`, wird die Datei **übersprungen und nicht neu
+verknüpft** – sonst wäre alles, was jemand weggeräumt hat, beim nächsten
+Kopieren aus OneDrive zurück, und niemand wüsste, warum.
+
+Gezählt wird das getrennt (`davon schon geloescht`) und in `ingest_lauf.bemerkung`
+vermerkt: sonst steckten diese Wiedergänger unsichtbar in der Zahl der
+Dubletten, und gerade sie will man wiederfinden – sie sind der Beleg, dass das
+Aussortieren gehalten hat.
+
+Nachgeprüft an einer echten Datei: `geloescht_am` auf vor 31 Tagen gestellt,
+Aufräumlauf → drei Dateien weg, Zeile steht, `sha256` unverändert. Dieselbe
+Datei erneut nach `eingang/` gelegt und den Ingest laufen lassen →
+`uebernommen 0, Dubletten 1, davon schon geloescht 1`, kein Original neu
+angelegt, 922 Zeilen unverändert.

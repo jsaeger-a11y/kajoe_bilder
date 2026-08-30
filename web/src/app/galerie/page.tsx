@@ -2,11 +2,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import {
-  SEITENGROESSE, dauertext, filterAusSuche, monatstext, seite, suchtext,
-  trefferzahlen, zeitraeume, type Kachel,
+  SEITENGROESSE, alleIds, dauertext, filterAusSuche, galerielink, istEingeschraenkt,
+  monatstext, seite, suchtext, trefferzahlen, zeitraeume, type Kachel,
 } from "@/lib/galerie";
-import { verlangeAnmeldung } from "@/lib/zugriff";
+import { eigeneListen } from "@/lib/listen";
+import {
+  auswahlAusSuche, auswahlteile, istMarkiert, umschalten,
+} from "@/lib/markierung";
+import { HOECHSTENS_JE_VORGANG } from "@/lib/rechte";
+import { darf, verlangeAnmeldung } from "@/lib/zugriff";
 import Kopf from "../kopf";
+import Auswahlleiste from "./auswahlleiste";
 import Filterleiste from "./filterleiste";
 
 export const metadata: Metadata = { title: "Galerie" };
@@ -27,18 +33,24 @@ export default async function Galerie({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const wer = await verlangeAnmeldung();
-  const filter = filterAusSuche(await searchParams);
+  const suche = await searchParams;
+  const filter = filterAusSuche(suche);
+  const auswahl = auswahlAusSuche(suche);
 
-  const [{ kacheln, treffer }, zahlen, raeume] = await Promise.all([
+  const [{ kacheln, treffer }, zahlen, raeume, listen] = await Promise.all([
     seite(filter),
     trefferzahlen(filter),
     zeitraeume(filter),
+    eigeneListen(wer.benutzerId),
   ]);
 
   const seiten = Math.max(1, Math.ceil(treffer / SEITENGROESSE));
+  const eingeschraenkt = istEingeschraenkt(filter);
 
-  // Nach Monat gruppieren. Die Seite kann ueber einen Monatswechsel laufen –
-  // die Ueberschrift entsteht deshalb beim Durchgehen, nicht aus dem Filter.
+  // "alle Treffer waehlen" kennt der Server, nicht der Browser: die Kennungen
+  // der Bilder, die gerade nicht auf dem Schirm stehen, hat sonst niemand.
+  const alleTrefferIds = auswahl.aktiv && eingeschraenkt ? await alleIds(filter) : [];
+
   const gruppen: { jahr: number; monat: number; stuecke: Kachel[] }[] = [];
   for (const k of kacheln) {
     const letzte = gruppen.at(-1);
@@ -46,7 +58,9 @@ export default async function Galerie({
     else gruppen.push({ jahr: k.jahr, monat: k.monat, stuecke: [k] });
   }
 
-  const anhang = suchtext(filter);
+  const zusatz = auswahlteile(auswahl);
+  const anhang = suchtext(filter, {}, zusatz);
+  const blaettern = (s: number) => `/galerie${suchtext(filter, { seite: s }, zusatz)}`;
 
   return (
     <main>
@@ -55,9 +69,56 @@ export default async function Galerie({
 
       <Filterleiste filter={filter} zahlen={zahlen} treffer={treffer} zeitraeume={raeume} />
 
-      {kacheln.length === 0 ? (
-        <p className="hinweis">Zu diesen Filtern gibt es nichts.</p>
+      <div className="filterzeile">
+        <b>Auswahl</b>
+        {auswahl.aktiv ? (
+          <>
+            <Link className="marke-filter gewaehlt" href={`/galerie${suchtext(filter)}`}>
+              Auswahl beenden
+            </Link>
+            {auswahl.ids.length ? (
+              <Link className="marke-filter"
+                    href={`/galerie${suchtext(filter, {}, ["w=1"])}`}>
+                Markierungen aufheben
+              </Link>
+            ) : null}
+            {eingeschraenkt ? (
+              <Link className="marke-filter"
+                    href={`/galerie${suchtext(filter, {}, ["w=1", `m=${alleTrefferIds.join(",")}`])}`}>
+                alle {Math.min(treffer, HOECHSTENS_JE_VORGANG)} Treffer wählen
+                {treffer > HOECHSTENS_JE_VORGANG ? ` (von ${treffer})` : ""}
+              </Link>
+            ) : null}
+          </>
+        ) : (
+          <Link className="marke-filter" href={`/galerie${suchtext(filter, {}, ["w=1"])}`}>
+            Bilder auswählen
+          </Link>
+        )}
+      </div>
+
+      {auswahl.aktiv && !eingeschraenkt ? (
+        /*
+          Ohne Einschraenkung traefe eine Sammelauswahl den ganzen Bestand.
+          Statt eines Schalters, der nichts tut, steht hier, was noch fehlt.
+        */
+        <p className="hinweis-filter">
+          Für „alle Treffer wählen“ fehlt noch ein Filter – gerade sind alle{" "}
+          {zahlen.gesamt} Aufnahmen im Blick. Wähle oben ein Jahr, einen Monat, eine
+          Herkunft, einen Typ oder <em>mit Ort</em>. Einzeln markieren geht schon jetzt.
+        </p>
       ) : null}
+
+      {auswahl.aktiv ? (
+        <Auswahlleiste
+          ids={auswahl.ids}
+          listen={listen.map((l) => ({ id: l.id, name: l.name, anzahl: l.anzahl }))}
+          darfLoeschen={darf(wer, "loeschen")}
+          grenze={HOECHSTENS_JE_VORGANG}
+        />
+      ) : null}
+
+      {kacheln.length === 0 ? <p className="hinweis">Zu diesen Filtern gibt es nichts.</p> : null}
 
       {gruppen.map((g) => (
         <section key={`${g.jahr}-${g.monat}`}>
@@ -67,32 +128,32 @@ export default async function Galerie({
           <div className="gitter">
             {g.stuecke.map((k) => {
               const laenge = dauertext(k.dauer_sekunden);
+              const markiert = istMarkiert(auswahl, k.id);
+              // Im Auswahlmodus ein VERWEIS, kein Kaestchen – siehe
+              // src/lib/markierung.ts, Abschnitt defaultChecked.
+              const ziel = auswahl.aktiv
+                ? `/galerie${suchtext(filter, {}, auswahlteile(umschalten(auswahl, k.id)))}#k${k.id}`
+                : `/bild/${k.id}${anhang}`;
               return (
                 <Link
                   key={k.id}
-                  href={`/bild/${k.id}${anhang}`}
-                  className="kachel"
+                  id={`k${k.id}`}
+                  href={ziel}
+                  className={`kachel${markiert ? " markiert" : ""}`}
                   title={`${datum(k.aufnahme_lokal)} ${uhrzeit(k.aufnahme_lokal)}`}
+                  aria-pressed={auswahl.aktiv ? markiert : undefined}
                 >
-                  {/*
-                    Bewusst <img> und nicht next/image: der Bildzuschnitt von
-                    Next holt die Datei serverseitig OHNE das Sitzungscookie und
-                    liefe damit gegen unsere 401. Die Vorschau ist ohnehin schon
-                    auf 300 px gerechnet.
-                  */}
-                  <img
-                    src={`/datei/${k.id}/vorschau`}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    width={300}
-                    height={300}
-                  />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/datei/${k.id}/vorschau`} alt="" loading="lazy"
+                       decoding="async" width={300} height={300} />
                   <span className="marke">
                     {datum(k.aufnahme_lokal)} {uhrzeit(k.aufnahme_lokal)}
                   </span>
                   {k.typ === "video" ? (
                     <span className="tag">▶ Video{laenge ? ` ${laenge}` : ""}</span>
+                  ) : null}
+                  {auswahl.aktiv ? (
+                    <span className="haken">{markiert ? "✓" : ""}</span>
                   ) : null}
                 </Link>
               );
@@ -103,23 +164,11 @@ export default async function Galerie({
 
       {seiten > 1 ? (
         <nav className="blaettern">
-          {filter.seite > 1 ? (
-            <Link href={`/galerie${suchtext(filter, { seite: filter.seite - 1 })}`}>
-              ← neuere
-            </Link>
-          ) : (
-            <span>← neuere</span>
-          )}
-          <span>
-            Seite {filter.seite} von {seiten} · {treffer} Aufnahmen
-          </span>
-          {filter.seite < seiten ? (
-            <Link href={`/galerie${suchtext(filter, { seite: filter.seite + 1 })}`}>
-              ältere →
-            </Link>
-          ) : (
-            <span>ältere →</span>
-          )}
+          {filter.seite > 1 ? <Link href={blaettern(filter.seite - 1)}>← neuere</Link>
+                            : <span>← neuere</span>}
+          <span>Seite {filter.seite} von {seiten} · {treffer} Aufnahmen</span>
+          {filter.seite < seiten ? <Link href={blaettern(filter.seite + 1)}>ältere →</Link>
+                                 : <span>ältere →</span>}
         </nav>
       ) : null}
     </main>

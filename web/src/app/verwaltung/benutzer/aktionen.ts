@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { abfrage, eineZeile } from "@/lib/db";
 import { hashe, passwortBeanstandung } from "@/lib/passwort";
+import { istRecht } from "@/lib/rechte";
 import { alleSitzungenBeenden } from "@/lib/sitzung";
 import { aktionVerwalter } from "@/lib/zugriff";
 
@@ -89,6 +90,29 @@ export async function aktivSetzen(formular: FormData): Promise<void> {
   // Ein abgeschaltetes Konto soll sofort draussen sein, nicht erst, wenn
   // irgendwann eine Sitzung ablaeuft.
   if (!aktiv) await alleSitzungenBeenden(id);
+  revalidatePath("/verwaltung/benutzer");
+}
+
+/**
+ * Ein einzelnes Recht geben oder nehmen.
+ *
+ * Nur Verwalter, und das wird HIER geprueft. Ein Verwalter braucht die Liste
+ * nicht: er darf ohnehin alles.
+ */
+export async function rechtUmschalten(formular: FormData): Promise<void> {
+  await aktionVerwalter();
+  const id = Number(formular.get("id"));
+  const recht = String(formular.get("recht") ?? "");
+  const geben = String(formular.get("geben")) === "1";
+  if (!Number.isInteger(id) || !istRecht(recht)) throw new Error("Ungueltige Eingabe.");
+
+  await abfrage(
+    geben
+      ? `UPDATE benutzer SET rechte = array_append(rechte, $2)
+          WHERE id = $1 AND NOT (rechte @> ARRAY[$2::text])`
+      : `UPDATE benutzer SET rechte = array_remove(rechte, $2) WHERE id = $1`,
+    [id, recht],
+  );
   revalidatePath("/verwaltung/benutzer");
 }
 

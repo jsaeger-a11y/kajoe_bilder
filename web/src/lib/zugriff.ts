@@ -15,6 +15,7 @@ import "server-only";
 
 import { notFound, redirect } from "next/navigation";
 
+import type { Recht } from "./rechte";
 import { angemeldet, type Angemeldet } from "./sitzung";
 
 export class ZugriffFehler extends Error {
@@ -22,6 +23,16 @@ export class ZugriffFehler extends Error {
     super(text);
     this.name = "ZugriffFehler";
   }
+}
+
+/**
+ * Darf diese Person das?
+ *
+ * Ein Verwalter darf ohnehin alles – deshalb steht die Rolle hier vorn und
+ * nicht als Sonderfall an fuenf Aufrufstellen.
+ */
+export function darf(wer: Angemeldet, recht: Recht): boolean {
+  return wer.rolle === "verwalter" || wer.rechte.includes(recht);
 }
 
 // --- Seiten ---------------------------------------------------------------
@@ -45,6 +56,13 @@ export async function verlangeVerwalter(): Promise<Angemeldet> {
   return wer;
 }
 
+/** Fuer Seiten: nur mit diesem Recht (oder als Verwalter). Sonst 404. */
+export async function verlangeRecht(recht: Recht): Promise<Angemeldet> {
+  const wer = await verlangeAnmeldung();
+  if (!darf(wer, recht)) notFound();
+  return wer;
+}
+
 // --- Server Actions -------------------------------------------------------
 
 /**
@@ -63,12 +81,39 @@ export async function aktionVerwalter(): Promise<Angemeldet> {
   return wer;
 }
 
+/**
+ * Fuer Server Actions: nur mit diesem Recht.
+ *
+ * Dass der Knopf in der Anzeige fehlt, ist keine Pruefung. Eine Server Action
+ * ist eine Adresse wie jede andere.
+ */
+export async function aktionRecht(recht: Recht): Promise<Angemeldet> {
+  const wer = await aktionAngemeldet();
+  if (!darf(wer, recht)) {
+    throw new ZugriffFehler("Dazu fehlt die Berechtigung zum Löschen.");
+  }
+  return wer;
+}
+
 // --- Route Handler --------------------------------------------------------
 
 /**
  * Fuer Routen. Gibt bei fehlender Berechtigung eine Antwort zurueck, sonst
  * die angemeldete Person. Der Aufrufer gibt die Antwort einfach weiter.
  */
+export async function routeRecht(
+  recht: Recht,
+): Promise<{ ok: true; wer: Angemeldet } | { ok: false; antwort: Response }> {
+  const wer = await angemeldet();
+  if (!wer) {
+    return { ok: false, antwort: Response.json({ fehler: "nicht angemeldet" }, { status: 401 }) };
+  }
+  if (!darf(wer, recht)) {
+    return { ok: false, antwort: Response.json({ fehler: "keine Berechtigung" }, { status: 403 }) };
+  }
+  return { ok: true, wer };
+}
+
 export async function routeVerwalter(): Promise<
   { ok: true; wer: Angemeldet } | { ok: false; antwort: Response }
 > {

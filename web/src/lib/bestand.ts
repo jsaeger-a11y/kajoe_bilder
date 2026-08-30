@@ -7,6 +7,7 @@ import { join } from "node:path";
 
 import { abfrage, eineZeile } from "./db";
 import { ABGELEITET, DATEN } from "./dateien";
+import { NICHT_GELOESCHT } from "./sichtbar";
 
 export interface Ueberblick {
   gesamt: number;
@@ -29,6 +30,16 @@ export interface Ueberblick {
 let gemerkt: { zeitpunkt: number; bytes: number } | null = null;
 const GEDAECHTNIS_MS = 10 * 60 * 1000;
 
+/**
+ * Nur die drei Arten, die der Ingest und die Ableitung wirklich anlegen.
+ *
+ * Gezaehlt wird nach Namensmuster und nicht einfach alles im Ordner: liegt dort
+ * versehentlich etwas anderes – beim Schreiben dieser Zeilen waren es 8.486
+ * Originale aus einer Uebertragung, die im falschen Verzeichnis landete –,
+ * meldet die Uebersicht sonst 35 GB Ableitungen statt 400 MB.
+ */
+const ABLEITUNG = /-(vorschau|ansicht)\.jpg$|-wiedergabe\.mp4$/;
+
 async function ordnergroesse(wurzel: string): Promise<number> {
   let summe = 0;
   const zu_tun = [wurzel];
@@ -43,7 +54,7 @@ async function ordnergroesse(wurzel: string): Promise<number> {
     for (const e of eintraege) {
       const pfad = join(ordner, e.name);
       if (e.isDirectory()) zu_tun.push(pfad);
-      else if (e.isFile()) {
+      else if (e.isFile() && ABLEITUNG.test(e.name)) {
         try {
           summe += (await stat(pfad)).size;
         } catch {
@@ -73,10 +84,10 @@ export async function ueberblick(): Promise<Ueberblick> {
       `SELECT jahr, count(*) AS anzahl,
               count(*) FILTER (WHERE typ = 'bild')  AS bilder,
               count(*) FILTER (WHERE typ = 'video') AS videos
-         FROM bild WHERE geloescht_am IS NULL GROUP BY jahr ORDER BY jahr DESC`,
+         FROM bild WHERE ${NICHT_GELOESCHT} GROUP BY jahr ORDER BY jahr DESC`,
     ),
     abfrage<{ herkunft: string; anzahl: string }>(
-      `SELECT herkunft, count(*) AS anzahl FROM bild WHERE geloescht_am IS NULL
+      `SELECT herkunft, count(*) AS anzahl FROM bild WHERE ${NICHT_GELOESCHT}
         GROUP BY herkunft ORDER BY count(*) DESC`,
     ),
     eineZeile<{
@@ -90,7 +101,7 @@ export async function ueberblick(): Promise<Ueberblick> {
               count(*) FILTER (WHERE zeitquelle <> 'exif')    AS ohne_exif_zeit,
               coalesce(sum(dateigroesse), 0)                  AS original_bytes,
               count(*) FILTER (WHERE wiedergabe_erzeugt)      AS wiedergabe
-         FROM bild WHERE geloescht_am IS NULL`,
+         FROM bild WHERE ${NICHT_GELOESCHT}`,
     ),
     statfs(DATEN),
     abgeleitetGroesse(),

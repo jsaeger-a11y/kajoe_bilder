@@ -4,9 +4,15 @@ import { notFound } from "next/navigation";
 
 import { eineZeile } from "@/lib/db";
 import { dauertext, filterAusSuche, nachbarn, suchtext } from "@/lib/galerie";
-import { verlangeAnmeldung } from "@/lib/zugriff";
+import { eigeneListen, inWievielenListen } from "@/lib/listen";
+import { auswahlAusSuche, auswahlteile, istMarkiert, umschalten } from "@/lib/markierung";
+import { LOESCHFRIST_TAGE } from "@/lib/rechte";
+import { NICHT_GELOESCHT } from "@/lib/sichtbar";
+import { darf, verlangeAnmeldung } from "@/lib/zugriff";
+import { einzelVormerken } from "../../vorgemerkt/aktionen";
 import Kopf from "../../kopf";
 import Abspieler from "./abspieler";
+import InListe from "./aktionen";
 
 export const metadata: Metadata = { title: "Aufnahme" };
 
@@ -66,22 +72,32 @@ export default async function Einzelansicht({
   const nummer = Number((await params).id);
   if (!Number.isInteger(nummer) || nummer < 1) notFound();
 
-  const filter = filterAusSuche(await searchParams);
+  const suche = await searchParams;
+  const filter = filterAusSuche(suche);
+  const auswahl = auswahlAusSuche(suche);
+  const tun = String(suche.tun ?? "");
 
   const b = await eineZeile<Zeile>(
     `SELECT id::int AS id, sha256, dateiname, dateityp, dateigroesse, typ, herkunft,
             geraet_hersteller, geraet_modell, aufnahme_lokal, aufnahme_utc,
             zeitversatz, zeitquelle, breite, hoehe, dauer_sekunden, video_codec,
             hdr, lat, lon, gps_status, wiedergabe_erzeugt, eingelesen_am
-       FROM bild WHERE id = $1 AND geloescht_am IS NULL`,
+       FROM bild WHERE id = $1 AND ${NICHT_GELOESCHT}`,
     [nummer],
   );
   if (!b) notFound();
 
   // Geblaettert wird INNERHALB der gefilterten Menge. Sonst springt man aus der
   // Auswahl heraus, in der man gerade sucht.
-  const rundum = await nachbarn(filter, b.aufnahme_lokal, b.id);
-  const anhang = suchtext(filter);
+  const [rundum, listen, inListenAnzahl] = await Promise.all([
+    nachbarn(filter, b.aufnahme_lokal, b.id),
+    eigeneListen(wer.benutzerId),
+    inWievielenListen(b.id),
+  ]);
+  const zusatz = auswahlteile(auswahl);
+  const anhang = suchtext(filter, {}, zusatz);
+  const markiert = istMarkiert(auswahl, b.id);
+  const darfLoeschen = darf(wer, "loeschen");
   const laenge = dauertext(b.dauer_sekunden);
   const hergeleitet = b.zeitquelle !== "exif";
 
@@ -104,6 +120,58 @@ export default async function Einzelansicht({
           <span>ältere →</span>
         )}
       </nav>
+
+      <div className="filterzeile">
+        <b>Dieses Bild</b>
+        {/* Ein VERWEIS, kein Kaestchen – die Markierung steht in der Adresse
+            und ueberlebt damit jedes Blaettern. */}
+        <Link
+          className={`marke-filter${markiert ? " gewaehlt" : ""}`}
+          href={`/bild/${b.id}${suchtext(filter, {}, auswahlteile(umschalten(auswahl, b.id)))}`}
+        >
+          {markiert ? "✓ markiert" : "markieren"}
+        </Link>
+        {auswahl.ids.length ? (
+          <Link className="marke-filter" href={`/galerie${suchtext(filter, {}, zusatz)}`}>
+            {auswahl.ids.length} markiert – zur Auswahl
+          </Link>
+        ) : null}
+        {darfLoeschen ? (
+          tun === "loeschen" ? (
+            <Link className="marke-filter gewaehlt" href={`/bild/${b.id}${anhang}`}>
+              Abbrechen
+            </Link>
+          ) : (
+            <Link className="marke-filter"
+                  href={`/bild/${b.id}${suchtext(filter, {}, [...zusatz, "tun=loeschen"])}`}>
+              Zum Löschen vormerken …
+            </Link>
+          )
+        ) : null}
+      </div>
+
+      {darfLoeschen && tun === "loeschen" ? (
+        <div className="karte">
+          <p>
+            Dieses Bild zum Löschen vormerken? Es verschwindet aus der Galerie, die
+            Datei bleibt <strong>{LOESCHFRIST_TAGE} Tage</strong> liegen und lässt sich
+            unter <em>Vorgemerkt</em> zurückholen.
+          </p>
+          {inListenAnzahl > 0 ? (
+            <p className="fehler">
+              Achtung: Dieses Bild steht in <strong>{inListenAnzahl}</strong>{" "}
+              Auswahlliste(n). Eine Sammellöschung würde es überspringen – hier, einzeln,
+              wird es mitgenommen.
+            </p>
+          ) : null}
+          <form action={einzelVormerken} className="nebeneinander">
+            <input type="hidden" name="bild" value={b.id} />
+            <input type="hidden" name="zurueck" value={`/galerie${anhang}`} />
+            <button className="haupt" type="submit">Ja, vormerken</button>
+            <Link className="marke-filter" href={`/bild/${b.id}${anhang}`}>Abbrechen</Link>
+          </form>
+        </div>
+      ) : null}
 
       <div className="einzel">
         <div className="buehne">
@@ -168,6 +236,14 @@ export default async function Einzelansicht({
             <dt>Eingelesen</dt>
             <dd className="leise">{zeitstempel(b.eingelesen_am)} UTC</dd>
           </dl>
+
+          <InListe bildId={b.id} listen={listen.map((l) => ({ id: l.id, name: l.name, anzahl: l.anzahl }))} />
+
+          {inListenAnzahl > 0 ? (
+            <p className="leise">
+              Steht in {inListenAnzahl} Auswahlliste(n).
+            </p>
+          ) : null}
 
           {hergeleitet ? (
             <p className="herleitung">

@@ -286,3 +286,113 @@ sich selbst statt die Seite breit zu machen.
 **Auf einem echten Telefon ist das nicht geprüft** – dafür fehlt hier das
 Gerät. Geprüft sind nur die Voraussetzungen: Viewport-Angabe, keine festen
 Breiten, Umbruch der Kopfleiste, Größe der Tippziele.
+
+---
+
+# Markieren, Listen, Löschen (Phase 3a)
+
+| Adresse | was |
+|---|---|
+| `/galerie?w=1` | Auswahlmodus: Kacheln markieren, Sammelaktionen |
+| `/listen` | eigene Listen, freigegebene fremde, neue anlegen |
+| `/listen/<nr>` | Inhalt, umbenennen, freigeben, löschen |
+| `/vorgemerkt` | zum Löschen vorgemerkt, mit Restzeit und Zurückholen |
+| `/api/vorgemerkt` | dasselbe als JSON – nur mit dem Recht `loeschen` |
+
+## Rechte
+
+`benutzer.rechte` ist eine **Textliste**, obwohl zunächst nur `loeschen` darin
+steht: ein zweiter Fall ist bereits bekannt (ob die Karte allen sichtbar sein
+soll, ist in `CLAUDE.md` offen). Eine Spalte `darf_loeschen` müsste dann eine
+zweite bekommen, und die dritte käme bestimmt auch noch.
+
+Die Kennungen stehen in `src/lib/rechte.ts` und **nicht** als Datenbankregel:
+eine `CHECK`-Bedingung über einer Liste zwingt zu einer Migration, sobald ein
+Recht dazukommt.
+
+`darf(wer, recht)` in `src/lib/zugriff.ts` ist die einzige Stelle, die das
+entscheidet – **ein Verwalter darf ohnehin alles**, das steht dort vorn und
+nicht als Sonderfall an fünf Aufrufstellen. Dazu `verlangeRecht()` für Seiten,
+`aktionRecht()` für Server Actions, `routeRecht()` für Routen.
+
+Die Rechte kommen bei **jedem** Aufruf frisch aus der Datenbank, nicht aus dem
+Cookie: ein entzogenes Recht wirkt sofort, so wie ein abgeschaltetes Konto.
+
+## Markieren: die `defaultChecked`-Falle
+
+Der naheliegende Weg wäre ein angehaktes Kästchen je Kachel. **Er trägt nicht.**
+React setzt beim Aktualisieren nur das Attribut `defaultChecked`; die
+tatsächliche Ankreuzung des Feldes – und nur die wird abgeschickt – entsteht
+allein beim ersten Aufbau. Nach einem vollen Seitenaufbau stimmt es, nach einem
+Klick auf einen Verweis nicht mehr: man blättert auf Seite 2, kommt zurück und
+schickt die Hälfte ab, ohne dass irgendwo etwas zu sehen wäre.
+
+Deshalb trägt jede Kachel im Auswahlmodus einen **Verweis**, der die Kennung
+der Adresse hinzufügt oder aus ihr entfernt (`src/lib/markierung.ts`). Was in
+der Adresse steht, überlebt jedes Blättern.
+
+Nachgemessen: Filter Juni 2026 (185 Treffer), „alle 185 wählen“, dann auf
+Seite 2 geblättert – das Formular auf Seite 2 trug **185** Kennungen, obwohl
+dort nur 60 Kacheln stehen.
+
+**Wieviel gemeint war, reist als eigenes Feld mit** (`anzahl`). Kommt weniger
+an, wird das gesagt, statt stillschweigend weniger zu verarbeiten – bei
+fünfhundert Kennungen zählt das niemand nach. Gegengeprobt mit einem auf 50
+gekürzten Feld: „Es sollten 185 Bilder sein, angekommen sind 50. Nichts
+geändert.“
+
+**Die Sammelauswahl gibt es nur mit gesetztem Filter.** Ohne Einschränkung
+träfe sie den ganzen Bestand; statt eines Schalters, der nichts tut, steht dort
+der Satz, was noch fehlt.
+
+`HOECHSTENS_JE_VORGANG = 500` greift schon beim Markieren: der Link heißt dann
+„alle 500 Treffer wählen (von 922)“, nicht erst das Abschicken scheitert.
+
+## Listen
+
+Besitzerprüfung **in der Abfrage**, nicht daneben: `listeZumSehen()` nimmt
+eigene und freigegebene, `listeZumAendern()` nur eigene. Die Kennung kommt aus
+der Sitzung, nie aus der Adresse – auch ein Verwalter sieht fremde Listen
+nicht, außer sie sind freigegeben. Eine Auswahlliste ist etwas Privates, keine
+Verwaltungssache.
+
+Nachgeprüft: B sieht A's Liste nicht (404 auch bei direktem Aufruf); nach der
+Freigabe sieht B sie, aber Umbenennen und Löschen weist die Server Action ab –
+und zwar auch dann, wenn B das Formular von A holt und mit dem eigenen Cookie
+abschickt. Gegenprobe mit demselben Formular als A: geht durch.
+
+**Kein Knopf heißt wie etwas, das er nicht tut.** „Umbenennen …“ öffnet das
+Feld, gespeichert wird mit „Neuen Namen speichern“; „Löschen …“ öffnet die
+Rückfrage – mit dem Namen darin und dem Satz, dass die Bilder selbst bleiben.
+Beide Zwischenschritte stehen in der Adresse (`?tun=umbenennen`), nicht im
+Browser.
+
+Grenzen im Code: 500 Bilder je Liste, 50 Listen je Benutzer.
+
+## Löschen
+
+Zweistufig. **Vormerken** setzt `geloescht_am`; das Bild verschwindet aus
+Galerie, Listen und Dateiauslieferung, die Datei bleibt. Nach **30 Tagen**
+entfernt `tools/aufraeumen.sh` Original und Ableitungen.
+
+`NICHT_GELOESCHT` steht in `src/lib/sichtbar.ts` und wird **nirgends neu
+formuliert** – nicht in der Galerie, nicht in den Listen, nicht beim
+Ausliefern, nicht beim Zählen.
+
+**Die Sammellöschung überspringt Bilder, die in einer Auswahlliste stehen** –
+und sagt, wie viele. Was jemand ausdrücklich gesammelt hat, darf kein
+Stapellauf stillschweigend mitnehmen. Beim Einzellöschen steht stattdessen der
+Hinweis, in wie vielen Listen das Bild steht; dort entscheidet die Person, die
+es vor sich hat.
+
+Nach dem Vormerken aus der Einzelansicht wird **zwingend weitergeleitet**: das
+Bild hat die Seite gerade verlassen, und ohne die Weiterleitung baut Next
+dieselbe Ansicht neu auf, findet es nicht mehr und zeigt eine 404 – als wäre
+etwas schiefgegangen, obwohl alles richtig lief.
+
+## Eine `"use server"`-Datei darf nur Funktionen ausführen
+
+`export const GRENZE = 500` in einer Datei mit `"use server"` übersetzt sich
+anstandslos und scheitert erst zur Laufzeit mit *A "use server" file can only
+export async functions, found number*. Weder `tsc` noch `next build` finden
+das. Konstanten gehören nach `src/lib/`.

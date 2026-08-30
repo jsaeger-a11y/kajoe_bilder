@@ -194,3 +194,33 @@ td form { display: inline; }
 /* Nichts darf die Seite waagerecht ueber den Schirm hinausschieben. */
 html, body { max-width: 100%; overflow-x: hidden; }
 img, video { max-width: 100%; height: auto; }
+
+/* --- Auswahl ------------------------------------------------------------ */
+
+.kachel.markiert { outline: 3px solid var(--betont); outline-offset: -3px; }
+.kachel .haken {
+  position: absolute; right: .3rem; bottom: .3rem;
+  width: 1.6rem; height: 1.6rem; border-radius: 50%;
+  border: 2px solid #fff; background: rgba(0, 0, 0, .45);
+  color: #fff; font-size: .95rem; line-height: 1.35rem; text-align: center;
+}
+.kachel.markiert .haken { background: var(--betont); border-color: var(--betont); }
+
+.auswahlleiste {
+  margin: 1rem 0; padding: .9rem 1rem;
+  border: 1px solid var(--betont); border-radius: 8px; background: var(--feld);
+}
+.auswahlzahl { margin: 0 0 .5rem; }
+.auswahlteil { margin-top: .75rem; padding-top: .75rem; border-top: 1px solid var(--rand); }
+.auswahlteil:first-of-type { border-top: none; padding-top: 0; }
+.nebeneinander { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.nebeneinander select, .nebeneinander input[type="text"] { width: auto; flex: 1 1 12rem; }
+.nebeneinander button { margin-top: 0; }
+
+.kachel-rahmen { display: flex; flex-direction: column; gap: .25rem; }
+.kachel-rahmen .kachel { aspect-ratio: 1; }
+.kachel-rahmen button { width: 100%; }
+
+.kachel.leer { display: flex; align-items: center; justify-content: center;
+               background: var(--feld); border: 1px dashed var(--rand);
+               line-height: 1.4; text-align: center; padding: .5rem; }

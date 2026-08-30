@@ -45,6 +45,7 @@ class Zaehler:
     dubletten: int = 0
     quarantaene: int = 0
     uebersprungen: int = 0
+    bereits_geloescht: int = 0
     mov_mit_bildpartner: int = 0
     herkunft: Counter = field(default_factory=Counter)
     zeitquelle: Counter = field(default_factory=Counter)
@@ -148,8 +149,24 @@ class Lauf:
                           mov_mit_bildpartner = %s, bemerkung = %s
                     WHERE id = %s""",
                 (z.gefunden, z.uebernommen, z.dubletten, z.quarantaene,
-                 z.uebersprungen, z.mov_mit_bildpartner, bemerkung, self.lauf_id),
+                 z.uebersprungen, z.mov_mit_bildpartner,
+                 self._bemerkung(bemerkung), self.lauf_id),
             )
+
+    def _bemerkung(self, bemerkung: str | None) -> str | None:
+        """Schon geloeschte Wiedergaenger gehoeren in den Laufbericht.
+
+        Sie stecken sonst unsichtbar in der Zahl der Dubletten, und gerade sie
+        will man spaeter wiederfinden: sie sind der Beleg, dass das Aussortieren
+        gehalten hat.
+        """
+        teile = [t for t in (bemerkung,) if t]
+        if self.zaehler.bereits_geloescht:
+            teile.append(
+                f"{self.zaehler.bereits_geloescht} Datei(en) uebersprungen, weil ihre "
+                f"Zeile als geloescht vermerkt ist"
+            )
+        return "; ".join(teile) if teile else None
 
     # -- Einzelne Datei ----------------------------------------------------
 
@@ -205,7 +222,10 @@ class Lauf:
         groesse = pfad.stat().st_size
 
         with self.conn.cursor() as cur:
-            cur.execute("SELECT pfad FROM bild WHERE sha256 = %s", (pruefsumme,))
+            cur.execute(
+                "SELECT pfad, geloescht_am FROM bild WHERE sha256 = %s",
+                (pruefsumme,),
+            )
             treffer = cur.fetchone()
 
         zeitangabe = einordnen.zeit(md, pfad, rel.as_posix())
@@ -217,8 +237,23 @@ class Lauf:
             # Dateinamen: iPhones zaehlen IMG_0001..IMG_9999 und fangen wieder
             # von vorn an.
             z.dubletten += 1
+            vorhanden = self.original / treffer[0]
+            geloescht_am = treffer[1]
+
+            if geloescht_am is not None:
+                # **Grabstein.** Diese Datei war schon einmal da und wurde
+                # ausdruecklich aussortiert. Sie wird NICHT neu angelegt und
+                # NICHT neu verknuepft – sonst waere alles, was jemand
+                # weggeraeumt hat, beim naechsten Kopieren aus OneDrive
+                # zurueck, und niemand wuesste, warum.
+                z.bereits_geloescht += 1
+                print(f"    schon geloescht am {geloescht_am:%Y-%m-%d}, "
+                      f"uebersprungen: {rel}")
+                if not self.trocken:
+                    pfad.unlink()
+                return
+
             if not self.trocken:
-                vorhanden = self.original / treffer[0]
                 if not vorhanden.exists():
                     # Zeile da, Datei weg – reparieren statt wegwerfen.
                     print(f"    Dublette, Original fehlte, neu verknuepft: {treffer[0]}")
@@ -407,6 +442,7 @@ class Lauf:
             ("gefunden", z.gefunden), ("uebernommen", z.uebernommen),
             ("Dubletten", z.dubletten), ("Quarantaene", z.quarantaene),
             ("uebersprungen (Wildkamera)", z.uebersprungen),
+            ("davon schon geloescht", z.bereits_geloescht),
             ("MOV mit Bildpartner", z.mov_mit_bildpartner),
         ):
             print(f"  {name:28s} {wert_:6d}")
@@ -414,6 +450,9 @@ class Lauf:
         summe = z.uebernommen + z.dubletten + z.quarantaene + z.uebersprungen
         print(f"  {'Summe (ohne Bildpartner)':28s} {summe:6d}"
               f"   {'stimmt' if summe == z.gefunden else 'STIMMT NICHT'}")
+        if z.bereits_geloescht:
+            print(f"  ({z.bereits_geloescht} der Dubletten sind Zeilen, die vorgemerkt "
+                  f"oder schon aufgeraeumt waren – sie werden nicht neu angelegt.)")
 
         for titel, zaehler in (("Herkunft", z.herkunft),
                                ("Zeitquelle", z.zeitquelle),

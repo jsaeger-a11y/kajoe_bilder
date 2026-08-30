@@ -3,9 +3,10 @@ import type { Metadata } from "next";
 import { abfrage } from "@/lib/db";
 import { FEHLVERSUCHE_BIS_SPERRE } from "@/lib/anmeldung";
 import { PASSWORT_MINDESTLAENGE } from "@/lib/passwort";
+import { RECHTE, RECHT_TEXT, type Recht } from "@/lib/rechte";
 import { verlangeVerwalter } from "@/lib/zugriff";
 import Kopf from "../../kopf";
-import { aktivSetzen, fehlversucheZuruecksetzen, rolleAendern } from "./aktionen";
+import { aktivSetzen, fehlversucheZuruecksetzen, rechtUmschalten, rolleAendern } from "./aktionen";
 import { AnlegenFormular, PasswortFormular } from "./formulare";
 
 export const metadata: Metadata = { title: "Benutzer" };
@@ -15,6 +16,7 @@ interface Zeile {
   benutzername: string;
   rolle: string;
   aktiv: boolean;
+  rechte: string[] | null;
   fehlversuche: number;
   angelegt_am: Date;
   letzte_anmeldung: Date | null;
@@ -26,7 +28,7 @@ export default async function Benutzerverwaltung() {
   const wer = await verlangeVerwalter();
 
   const zeilen = await abfrage<Zeile>(
-    `SELECT b.id::int AS id, b.benutzername, b.rolle, b.aktiv, b.fehlversuche,
+    `SELECT b.id::int AS id, b.benutzername, b.rolle, b.aktiv, b.rechte, b.fehlversuche,
             b.angelegt_am, b.letzte_anmeldung,
             (SELECT count(*) FROM sitzung s
               WHERE s.benutzer_id = b.id AND s.laeuft_ab_am > now()) AS sitzungen
@@ -49,6 +51,7 @@ export default async function Benutzerverwaltung() {
             <th>Name</th>
             <th>Rolle</th>
             <th>Zustand</th>
+            <th>Rechte</th>
             <th>Fehlversuche</th>
             <th>Sitzungen</th>
             <th>letzte Anmeldung</th>
@@ -85,6 +88,25 @@ export default async function Benutzerverwaltung() {
                     {z.aktiv ? "abschalten" : "einschalten"}
                   </button>
                 </form>
+              </td>
+              <td>
+                {z.rolle === "verwalter" ? (
+                  <span className="leise">darf ohnehin alles</span>
+                ) : (
+                  RECHTE.map((r: Recht) => {
+                    const hat = (z.rechte ?? []).includes(r);
+                    return (
+                      <form key={r} action={rechtUmschalten}>
+                        <input type="hidden" name="id" value={z.id} />
+                        <input type="hidden" name="recht" value={r} />
+                        <input type="hidden" name="geben" value={hat ? "0" : "1"} />
+                        <button className="klein" type="submit" title={RECHT_TEXT[r]}>
+                          {hat ? `✓ ${r}` : `+ ${r}`}
+                        </button>
+                      </form>
+                    );
+                  })
+                )}
               </td>
               <td>
                 {z.fehlversuche}

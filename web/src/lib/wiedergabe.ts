@@ -19,6 +19,7 @@ import { promisify } from "node:util";
 import { vergissAbgeleitetGroesse } from "./bestand";
 import { abfrage, eineZeile } from "./db";
 import { ableitungspfad, originalpfad } from "./dateien";
+import { NICHT_GELOESCHT } from "./sichtbar";
 import { PROJEKTWURZEL } from "./umgebung";
 
 const ausfuehren = promisify(execFile);
@@ -50,7 +51,7 @@ async function erzeugen(bildId: number): Promise<Ergebnis> {
     typ: string; hdr: boolean; wiedergabe_erzeugt: boolean;
   }>(
     `SELECT pfad, sha256, jahr, monat, typ, hdr, wiedergabe_erzeugt
-       FROM bild WHERE id = $1 AND geloescht_am IS NULL`,
+       FROM bild WHERE id = $1 AND ${NICHT_GELOESCHT}`,
     [bildId],
   );
 

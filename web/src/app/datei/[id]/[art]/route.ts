@@ -9,6 +9,7 @@
 import { eineZeile } from "@/lib/db";
 import { ARTEN, ableitungspfad, ausliefern, istArt } from "@/lib/dateien";
 import { angemeldet } from "@/lib/sitzung";
+import { NICHT_GELOESCHT } from "@/lib/sichtbar";
 
 // Ein Jahr. Der Dateiname ist der sha256 des Inhalts – die Datei aendert sich nie.
 const LEBENSDAUER = 60 * 60 * 24 * 365;
@@ -37,7 +38,7 @@ export async function GET(
     vorschau_erzeugt: boolean; wiedergabe_erzeugt: boolean;
   }>(
     `SELECT sha256, jahr, monat, typ, vorschau_erzeugt, wiedergabe_erzeugt
-       FROM bild WHERE id = $1 AND geloescht_am IS NULL`,
+       FROM bild WHERE id = $1 AND ${NICHT_GELOESCHT}`,
     [nummer],
   );
 

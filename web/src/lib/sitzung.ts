@@ -29,6 +29,8 @@ export interface Angemeldet {
   benutzerId: number;
   benutzername: string;
   rolle: Rolle;
+  /** Einzelne Rechte zusaetzlich zur Rolle. Ein Verwalter darf ohnehin alles. */
+  rechte: string[];
   sitzungId: number;
 }
 
@@ -81,12 +83,14 @@ export async function angemeldet(): Promise<Angemeldet | null> {
     benutzer_id: number;
     benutzername: string;
     rolle: Rolle;
+    rechte: string[] | null;
     nachfuehren: boolean;
   }>(
     `SELECT s.id::int  AS sitzung_id,
             b.id::int  AS benutzer_id,
             b.benutzername,
             b.rolle,
+            b.rechte,
             (s.zuletzt_gesehen < now() - $2::interval) AS nachfuehren
        FROM sitzung s
        JOIN benutzer b ON b.id = s.benutzer_id
@@ -112,6 +116,10 @@ export async function angemeldet(): Promise<Angemeldet | null> {
     benutzerId: Number(zeile.benutzer_id),
     benutzername: zeile.benutzername,
     rolle: zeile.rolle,
+    // Die Rechte kommen bei JEDEM Aufruf frisch aus der Datenbank, nicht aus
+    // dem Cookie: ein entzogenes Recht wirkt sofort, so wie ein
+    // abgeschaltetes Konto.
+    rechte: zeile.rechte ?? [],
   };
 }
 
