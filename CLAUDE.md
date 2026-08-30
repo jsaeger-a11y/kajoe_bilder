@@ -68,6 +68,40 @@ statt gegen die Daten.
 
 ---
 
+## Was die Messung ergeben hat
+
+Jahrgang 2026, 1.102 Dateien, 8,5 GB, ausgewertet mit `tools/bestand.py`
+(nicht mit `awk`: exiftool setzt Felder mit Komma in Anführungszeichen, und ein
+Trennen an jedem Komma verschiebt ab da alle Spalten der Zeile – das fällt nur auf,
+wenn man hinsieht, die Zahlen sehen plausibel aus und sind falsch).
+
+| | |
+|---|---|
+| iphone | 60,3 % |
+| ohne_exif | 23,5 % |
+| fremd (davon 177 von 178 Secacam) | 16,2 % |
+| HEIC + HEIF | 54,0 % |
+| Videodateien | 169 |
+| mit GPS | 74,6 % |
+| **ohne `DateTimeOriginal`** | **22,2 %** |
+| mit Zeitversatz | 53,6 % |
+
+**Videos sind 80 % des Volumens.** 6,8 GB gegen 1,7 GB bei den Bildern; ein Foto hat
+im Schnitt 1,8 MB. Hochgerechnet auf 110 GB sind das rund **22 GB Fotos und 88 GB
+Videos**, insgesamt etwa 14.000 Dateien. Zwei Folgen: Der Platz ist bei den Fotos kein
+Engpass – vollauflösende JPEGs wären rund 50 GB und passten sogar vorab. Und der
+eigentliche Brocken sind die Videos, weshalb die Wiedergabefassung weiterhin erst bei
+Bedarf entsteht.
+
+**Der Rückfallweg beim Datum ist der Normalfall, kein Randfall.** Jede fünfte Datei
+hat kein `DateTimeOriginal`. Er muss entsprechend sorgfältig gebaut sein.
+
+**`fremd` bestand 2026 zu 99 % aus Wildkamerabildern** – kein einziges echtes
+Fremdfoto, keine Digitalkamera, kein Android. Ob das für die Jahrgänge ab 2019 auch
+gilt, ist offen und wird bei der nächsten Messung geprüft.
+
+---
+
 ## Aufbau
 
 ```
@@ -76,7 +110,7 @@ statt gegen die Daten.
 ├── .env                     Zugangsdaten – NIEMALS committen
 ├── db/migrations/           Schema, nummeriert
 ├── ingest/                  Phase 1: Einlesen, EXIF, Ableitungen
-├── tools/                   sicherung.sh, migrieren.sh, status.sh
+├── tools/                   sicherung.sh, migrieren.sh, bestand.py, status.sh
 ├── systemd/                 Kopien der Dienst- und Timer-Dateien
 ├── sicherung/               pg_dump, 14 Tage – nicht im Repository
 ├── web/                     Phase 2+: Next.js
@@ -122,6 +156,18 @@ hinterher nicht einmal, was gefehlt hat.
 
 `fremd` und `ohne_exif` bleiben getrennt: Ersteres sind fast immer echte Aufnahmen,
 Zweiteres fast immer nicht.
+
+**Eine Ausnahme: Wildkamerabilder werden nicht eingelesen.** `Make` beginnt mit
+`ZEISS` oder `VenTrade` (Secacam). Sie gehören zum Wildkameraprojekt auf `hunter`, das
+sie bereits vorhält, und unterliegen dort eigenen Regeln zu Personenaufnahmen und
+Kamerastandorten – hinter einem öffentlich erreichbaren Tunnel für die erweiterte
+Familie wären sie eine stille Umgehung dieser Regeln. In der Messung von 2026 waren
+das 177 von 1.102 Dateien, also 16 %; in den übrigen Jahrgängen ist dasselbe zu
+erwarten.
+
+**Übersprungene Dateien werden gezählt**, nicht stillschweigend übergangen. Wer am
+Ende 11.800 von 14.000 Dateien in der Datenbank findet, muss sehen können, wo die
+übrigen geblieben sind.
 
 ### Zeit: hier gilt die Ortszeit, nicht UTC
 
@@ -182,11 +228,14 @@ das Original liegen.
 
 ### Videos
 
-**Live Photos sind keine Videos.** Jedes Live Photo ist eine `.heic` plus eine
-gleichnamige `.mov` von rund drei Sekunden. Ungeprüft landen daraus tausende
-Scheinvideos in der Videokategorie. Erkennung: gleicher Ordner, gleicher Dateiname
-ohne Endung, MOV kürzer als etwa fünf Sekunden → `live_photo = TRUE`, zählt nicht als
-Video.
+**Live Photos kommen über OneDrive nicht an.** In der Messung von 2026 gab es keine
+einzige MOV-Datei mit gleichnamigem Bildpartner – OneDrive überträgt das Standbild und
+lässt den Bewegtteil weg. Eine Sonderbehandlung ist deshalb nicht nötig.
+
+Der Ingest **zählt** trotzdem mit, zu wie vielen MOV-Dateien eine gleichnamige
+Bilddatei gehört, und schreibt die Zahl in den Laufbericht. Kostet nichts, greift
+nicht ein – aber falls die alten Jahrgänge anders aussehen als 2026, fällt es auf,
+statt vermutet zu werden. Die Spalte `live_photo` bleibt dafür im Schema.
 
 **HEVC spielt kein Chrome und kein Firefox.** Umpacken in einen MP4-Container hilft
 nicht – der Codec ist das Problem, nicht der Container. Aufnahmen mit der iPhone-
@@ -218,7 +267,15 @@ Anfang ist oft schwarz oder verwackelt.
 EXIF liefert Grad/Minute/Sekunde plus Himmelsrichtung, nicht Dezimalgrad. Beim
 Einlesen umrechnen – **`S` und `W` sind negativ**, wer das vergisst, spiegelt seine
 Bilder auf die Nordhalbkugel. Daneben `gps_status` (`ok`, `fehlt`, `unplausibel`);
-Fehlen ist häufig, bei ausgeschalteter Ortung schreibt das iPhone nichts.
+Fehlen ist häufig, bei ausgeschalteter Ortung schreibt das iPhone nichts. In der
+Messung von 2026 hatten 74,6 % der Dateien eine Koordinate.
+
+**Koordinaten werden auf Plausibilität geprüft, nicht blind übernommen.** Manche
+Geräte schreiben Platzhalter statt echter Werte – Secacam-Kameras mit ARGUS-Firmware
+etwa 1,0225/1,0225, den Golf von Guinea. Ohne Prüfung stünden Familienbilder vor
+Westafrika auf der Karte. Verworfen wird nach `unplausibel`: exakt 0/0 oder in dessen
+unmittelbarer Nähe, außerhalb des gültigen Bereichs, oder mehrfach identische
+Koordinaten auf die letzte Nachkommastelle.
 
 **GPS auf privaten Fotos hinter einem öffentlich erreichbaren Tunnel heißt: die
 Wohnadresse steht in den Daten.** Die Karte ist deshalb kein Selbstläufer, sondern
