@@ -25,10 +25,14 @@ Auf `webspace` entstehen später weitere Projekte:
 
 | | kajoe_bilder | frei für später |
 |---|---|---|
-| Code | `~/kajoe_bilder/` | `~/<projekt>/` |
+| Code | `~/webspace/kajoe_bilder/` | `~/webspace/<projekt>/` |
 | Daten | `/data/kajoe_bilder/` | `/data/<projekt>/` |
 | Postgres | `127.0.0.1:5432` | 5433, 5434, … |
 | Web | `127.0.0.1:3000` | 3001, 3002, … |
+
+`~/webspace/` ist die Klammer für alles, was auf dieser Maschine entsteht.
+Skripte lesen ihren Projektpfad **relativ zu sich selbst**, nie fest verdrahtet –
+sonst bricht ein Verschieben des Ordners alles.
 
 `/data/kajoe_bilder` ist ein **eigener Einhängepunkt** auf einem eigenen Logical
 Volume. Von 473 GB in `ubuntu-vg` sind 250 GB zugewiesen (243 GB nutzbar), der Rest
@@ -53,20 +57,28 @@ Ports werden hier eingetragen, bevor sie belegt werden.
 
 Vorhanden: Docker 28 + Compose 2.40, Node 22.11.0 (`~/.local/node/bin`),
 ffmpeg 8.0.1 mit Quick Sync (HEVC 8 und 10 Bit lesen, H.264 schreiben),
+PostgreSQL 17 im Container auf `127.0.0.1:5432`, tägliche Sicherung als
+Benutzertimer um 03:00 UTC (Linger gesetzt), Git mit privatem GitHub-Repository,
 Systemzeit UTC.
+
+**Vor Phase 1 steht die Bestandsmessung.** Erst wenn `exiftool` einmal lesend über
+`eingang/` gelaufen ist und Anzahl, Herstellerverteilung, Videoanteil, Videocodec und
+GPS-Quote als Zahlen vorliegen, wird der Ingest gebaut – sonst baut er gegen Annahmen
+statt gegen die Daten.
 
 ---
 
 ## Aufbau
 
 ```
-~/kajoe_bilder/
-├── docker-compose.yml       PostgreSQL auf 127.0.0.1:5432
+~/webspace/kajoe_bilder/
+├── docker-compose.yml       PostgreSQL 17 auf 127.0.0.1:5432
 ├── .env                     Zugangsdaten – NIEMALS committen
 ├── db/migrations/           Schema, nummeriert
 ├── ingest/                  Phase 1: Einlesen, EXIF, Ableitungen
-├── tools/                   Sicherung, Aufräumen, Status
+├── tools/                   sicherung.sh, migrieren.sh, status.sh
 ├── systemd/                 Kopien der Dienst- und Timer-Dateien
+├── sicherung/               pg_dump, 14 Tage – nicht im Repository
 ├── web/                     Phase 2+: Next.js
 └── docs/                    Anforderungen, Betrieb
 ```
@@ -290,7 +302,12 @@ Täglicher `pg_dump` ab Phase 0, nicht später.
 ## Arbeitsweise
 
 - Schemaänderungen **nur** als neue nummerierte Datei in `db/migrations/`, bestehende
-  Dateien nicht ändern
+  Dateien nicht ändern. Eingespielt wird über `tools/migrieren.sh`, nie von Hand mit
+  `psql < datei.sql`: das Skript sieht in `migrationsstand` nach, was schon gelaufen
+  ist, spielt nur Offenes ein und trägt es danach ein. Die Prüfsumme fällt auf, wenn
+  jemand eine bereits eingespielte Datei nachträglich ändert – ohne sie laufen Datei
+  und Datenbank still auseinander, und beim nächsten frischen Aufsetzen entsteht etwas
+  anderes als das, was im Betrieb läuft
 - Alles, was mehrfach laufen kann, muss mehrfach laufen können, ohne Schaden anzurichten
 - Vor Commits `git status` prüfen. **Nie `git add -A`**, immer `git add <datei>`.
   `.env`, `/data/kajoe_bilder` und `node_modules/` gehören nie ins Repository
