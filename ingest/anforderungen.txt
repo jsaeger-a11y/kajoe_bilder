@@ -1,2 +1,11 @@
-psycopg==3.3.4
-psycopg-binary==3.3.4
+# Betrieb – ingest/lauf.py und ingest/ableiten.py
+psycopg[binary]==3.3.4
+Pillow==12.3.0
+pillow-heif==1.5.0
+
+# Nur fuer ingest/messen.py, den Vergleich der Bildwerkzeuge. Nicht im
+# Betrieb gebraucht: das Rad bringt libvips ohne HEVC-Dekoder mit und
+# scheitert an jeder HEIC-Datei (siehe LIESMICH.md, "Werkzeugwahl").
+# pyvips[binary]==3.2.0
+
+# Ausserhalb von pip: exiftool 13.50 und ffmpeg 8.0.1 aus den Paketquellen.
