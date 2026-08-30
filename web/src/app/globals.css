@@ -1,0 +1,70 @@
+:root {
+  --grund: #fbfaf8;
+  --schrift: #23201d;
+  --leise: #6b655e;
+  --rand: #ddd7cf;
+  --feld: #ffffff;
+  --betont: #7a4a2b;
+  --warnung: #8a2f2f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --grund: #1b1917;
+    --schrift: #ece7e1;
+    --leise: #9d958b;
+    --rand: #3a352f;
+    --feld: #262320;
+    --betont: #d69b6f;
+    --warnung: #e08585;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--grund);
+  color: var(--schrift);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+main { max-width: 62rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+main.schmal { max-width: 24rem; padding-top: 5rem; }
+
+h1 { font-size: 1.4rem; margin: 0 0 1.25rem; font-weight: 600; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .75rem; font-weight: 600; }
+
+a { color: var(--betont); }
+
+label { display: block; margin: .9rem 0 .25rem; font-size: .9rem; color: var(--leise); }
+
+input[type="text"], input[type="password"], select {
+  width: 100%; padding: .55rem .65rem;
+  border: 1px solid var(--rand); border-radius: 6px;
+  background: var(--feld); color: inherit; font: inherit;
+}
+
+button {
+  padding: .5rem .9rem; margin-top: 1rem;
+  border: 1px solid var(--rand); border-radius: 6px;
+  background: var(--feld); color: inherit; font: inherit; cursor: pointer;
+}
+button.haupt { background: var(--betont); border-color: var(--betont); color: var(--grund); }
+button.klein { margin-top: 0; padding: .25rem .5rem; font-size: .85rem; }
+
+.fehler { margin: 1rem 0 0; padding: .6rem .75rem; border-radius: 6px;
+          border: 1px solid var(--warnung); color: var(--warnung); font-size: .92rem; }
+.hinweis { margin: 1rem 0 0; padding: .6rem .75rem; border-radius: 6px;
+           border: 1px solid var(--rand); color: var(--leise); font-size: .92rem; }
+
+table { width: 100%; border-collapse: collapse; margin-top: .5rem; font-size: .93rem; }
+th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid var(--rand); vertical-align: top; }
+th { color: var(--leise); font-weight: 500; font-size: .85rem; }
+td form { display: inline; }
+
+.leiste { display: flex; justify-content: space-between; align-items: baseline;
+          gap: 1rem; border-bottom: 1px solid var(--rand); padding-bottom: .75rem; }
+.leiste nav { display: flex; gap: 1rem; font-size: .92rem; }
+.leise { color: var(--leise); font-size: .9rem; }
+.karte { border: 1px solid var(--rand); border-radius: 8px; padding: 1rem 1.25rem; background: var(--feld); }

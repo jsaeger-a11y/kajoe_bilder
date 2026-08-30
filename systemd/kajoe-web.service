@@ -1,0 +1,37 @@
+# Benutzerdienst wie die Sicherung: die Anwendung liest die .env im Home und
+# spricht die Datenbank ueber 127.0.0.1 an.
+#
+# Installation siehe systemd/LIESMICH.md. `loginctl enable-linger jsaeger` ist
+# schon fuer die Sicherung gesetzt; ohne das haelt systemd die Benutzerdienste
+# nach dem Abmelden an.
+
+[Unit]
+Description=kajoe_bilder – Weboberflaeche auf 127.0.0.1:3000
+Documentation=file:///home/jsaeger/webspace/kajoe_bilder/web/LIESMICH.md
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jsaeger/webspace/kajoe_bilder/web
+
+# systemd kennt ~/.bashrc nicht. Node liegt unter ~/.local/node/bin und waere
+# ohne diese Zeile nicht zu finden.
+Environment=PATH=/home/jsaeger/.local/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=NODE_ENV=production
+
+# Aufruf ohne npm: ein Prozess weniger dazwischen, und systemd sieht den
+# richtigen. -H 127.0.0.1 ist Absicht – nicht 0.0.0.0. Davor kommt spaeter der
+# Cloudflare Tunnel; ohne die Adresse stuende der Port am ufw vorbei offen.
+ExecStart=/home/jsaeger/.local/node/bin/node \
+    /home/jsaeger/webspace/kajoe_bilder/web/node_modules/next/dist/bin/next \
+    start -H 127.0.0.1 -p 3000
+
+Restart=on-failure
+RestartSec=5
+
+# COOKIE_SECURE steht in der .env der Projektwurzel, nicht hier: eine
+# Einstellung an zwei Orten laeuft frueher oder spaeter auseinander.
+
+[Install]
+WantedBy=default.target

@@ -15,10 +15,16 @@ Gruppenmitgliedschaft von `jsaeger`.
 loginctl enable-linger jsaeger
 
 mkdir -p ~/.config/systemd/user
-cp systemd/kajoe-sicherung.service systemd/kajoe-sicherung.timer ~/.config/systemd/user/
+cp systemd/kajoe-sicherung.service systemd/kajoe-sicherung.timer \
+   systemd/kajoe-web.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now kajoe-sicherung.timer
+systemctl --user enable --now kajoe-web.service
 ```
+
+`kajoe-web.service` braucht vorher einmal `npm run build` in `web/`. Node liegt
+unter `~/.local/node/bin` und steht deshalb ausdruecklich im `PATH` der
+Dienstdatei – **systemd kennt `~/.bashrc` nicht**.
 
 ## Pruefen
 
@@ -27,6 +33,10 @@ loginctl show-user jsaeger | grep Linger     # muss Linger=yes sagen
 systemctl --user list-timers kajoe-sicherung.timer
 systemctl --user start kajoe-sicherung.service   # Lauf von Hand
 journalctl --user -u kajoe-sicherung.service -n 30
+
+systemctl --user status kajoe-web.service
+journalctl --user -u kajoe-web.service -n 30     # zeigt auch die Cookie-Zeile
+curl -sI http://127.0.0.1:3000/anmelden | head -1
 ```
 
 ## Nach Aenderungen
