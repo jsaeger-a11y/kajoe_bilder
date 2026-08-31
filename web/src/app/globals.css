@@ -224,3 +224,24 @@ img, video { max-width: 100%; height: auto; }
 .kachel.leer { display: flex; align-items: center; justify-content: center;
                background: var(--feld); border: 1px dashed var(--rand);
                line-height: 1.4; text-align: center; padding: .5rem; }
+
+/* --- Herunterladen ------------------------------------------------------ */
+
+.paket {
+  margin: 1.25rem 0; padding: 1rem 1.25rem;
+  border: 2px solid var(--betont); border-radius: 8px; background: var(--feld);
+}
+.paket h2 { margin: 0 0 .5rem; }
+.paket form { margin: .5rem 0; }
+.paket form span { flex: 1 1 12rem; }
+.paket p { margin: .5rem 0; }
+
+.herunterladen { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0 0; }
+.herunterladen a, .herunterladen a:visited {
+  display: inline-flex; align-items: center; min-height: 2.75rem;
+  padding: .5rem .9rem; border-radius: 6px; text-decoration: none;
+  border: 1px solid var(--rand); background: var(--feld); color: var(--schrift);
+}
+.herunterladen a.haupt {
+  background: var(--betont); border-color: var(--betont); color: var(--grund);
+}

@@ -7,6 +7,7 @@ import { bilderDerListe, listeZumSehen } from "@/lib/listen";
 import { HOECHSTENS_JE_LISTE } from "@/lib/rechte";
 import { verlangeAnmeldung } from "@/lib/zugriff";
 import Kopf from "../../kopf";
+import Paketformular from "../../paketformular";
 import { UmbenennenFormular } from "../formulare";
 import { bildAusListe, freigabeUmschalten, listeLoeschen } from "../aktionen";
 
@@ -100,6 +101,12 @@ export default async function Listenansicht({
           </form>
         </div>
       ) : null}
+
+      {/* Der Download-Knopf gehoert an die Liste, nicht in ein Untermenue:
+          durchsehen, sammeln, herunterladen ist der eigentliche Ablauf.
+          Nach dem Herunterladen bleibt die Liste bestehen – sie ist kein
+          Warenkorb, der sich leert. */}
+      <Paketformular zeilen={bilder} listeId={id} was="Aufnahmen in dieser Liste" />
 
       {bilder.length === 0 ? (
         <p className="hinweis">

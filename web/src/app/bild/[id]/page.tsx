@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { eineZeile } from "@/lib/db";
 import { dauertext, filterAusSuche, nachbarn, suchtext } from "@/lib/galerie";
+import { unveraendert } from "@/lib/herunterladen";
 import { eigeneListen, inWievielenListen } from "@/lib/listen";
 import { auswahlAusSuche, auswahlteile, istMarkiert, umschalten } from "@/lib/markierung";
 import { LOESCHFRIST_TAGE } from "@/lib/rechte";
@@ -172,6 +173,28 @@ export default async function Einzelansicht({
           </form>
         </div>
       ) : null}
+
+      <div className="herunterladen">
+        {/* Die Vorgabe ist das JPEG: das ist die Fassung, die ein
+            Druckdienstleister annimmt. Ist das Original schon ein JPEG oder
+            handelt es sich um ein Video, liefert auch dieser Weg die
+            Originaldatei unveraendert aus – ein zweites Kodieren waere eine
+            weitere Generation ohne jeden Gewinn. */}
+        {unveraendert(b, "jpeg") ? (
+          <a className="haupt" href={`/herunterladen/bild/${b.id}?art=original`}>
+            Herunterladen ({b.dateityp}, {groessentext(b.dateigroesse)})
+          </a>
+        ) : (
+          <>
+            <a className="haupt" href={`/herunterladen/bild/${b.id}?art=jpeg`}>
+              Als JPEG herunterladen (volle Auflösung)
+            </a>
+            <a href={`/herunterladen/bild/${b.id}?art=original`}>
+              Original ({b.dateityp}, {groessentext(b.dateigroesse)})
+            </a>
+          </>
+        )}
+      </div>
 
       <div className="einzel">
         <div className="buehne">

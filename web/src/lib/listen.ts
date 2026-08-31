@@ -220,6 +220,10 @@ export interface Listenbild {
   id: number;
   sha256: string;
   typ: string;
+  dateityp: string;
+  dateigroesse: string;
+  breite: number | null;
+  hoehe: number | null;
   aufnahme_lokal: Date;
   jahr: number;
   monat: number;
@@ -227,9 +231,17 @@ export interface Listenbild {
   notiz: string | null;
 }
 
+/**
+ * Die Bilder einer Liste – ohne die vorgemerkten.
+ *
+ * Ein vorgemerkt geloeschtes Bild bleibt in `auswahl_bild` stehen, faellt aber
+ * hier heraus. Damit erscheint es weder in der Ansicht noch im Paket, und wird
+ * es zurueckgeholt, ist es wieder da.
+ */
 export async function bilderDerListe(listeId: number): Promise<Listenbild[]> {
   return abfrage<Listenbild>(
-    `SELECT b.id::int AS id, b.sha256, b.typ, b.aufnahme_lokal, b.jahr, b.monat,
+    `SELECT b.id::int AS id, b.sha256, b.typ, b.dateityp, b.dateigroesse,
+            b.breite, b.hoehe, b.aufnahme_lokal, b.jahr, b.monat,
             b.dauer_sekunden, ab.notiz
        FROM auswahl_bild ab JOIN bild b ON b.id = ab.bild_id
       WHERE ab.auswahl_id = $1 AND b.${NICHT_GELOESCHT}

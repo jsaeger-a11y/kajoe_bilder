@@ -396,3 +396,96 @@ etwas schiefgegangen, obwohl alles richtig lief.
 anstandslos und scheitert erst zur Laufzeit mit *A "use server" file can only
 export async functions, found number*. Weder `tsc` noch `next build` finden
 das. Konstanten gehören nach `src/lib/`.
+
+---
+
+# Herunterladen (Phase 3b)
+
+| Adresse | was |
+|---|---|
+| `/herunterladen/bild/<nr>?art=jpeg` | vollauflösendes JPEG, Qualität 95, 4:4:4, sRGB, mit EXIF |
+| `/herunterladen/bild/<nr>?art=original` | die Datei, wie sie hereinkam |
+| `POST /herunterladen/paket` | ZIP aus einer Liste (`liste`) oder aus der Sammelauswahl (`ids`) |
+
+Gerechnet und gepackt wird in `ingest/herunterladen.py`; Node prüft, wer was
+darf, setzt die Kopfzeilen und reicht die Standardausgabe des Unterprozesses
+unverändert an die Antwort weiter.
+
+## Drei Regeln, wann das Original durchgereicht wird
+
+* **Videos gehen immer als Original.** Die Wiedergabefassung ist zum Ansehen
+  im Browser gedacht, nicht zum Behalten – sie ist teils größer als das
+  Original und schlechter.
+* **Ein JPEG-Original wird unverändert ausgeliefert**, auch unter „JPEG". Ein
+  zweites Kodieren wäre eine weitere Generation ohne jeden Gewinn. Das betrifft
+  1.595 der 17.524 Zeilen. Nachgeprüft: der Download ist `sha256`-gleich mit
+  der Datei auf der Platte.
+* Alles andere wird umgewandelt.
+
+Die Regel steht in `ingest/herunterladen.py` (`unveraendert`) und **noch einmal**
+in `web/src/lib/herunterladen.ts` – Node braucht sie, um den Dateinamen in die
+Kopfzeile zu schreiben, bevor der Strom läuft. Damit die beiden nicht
+auseinanderlaufen, gibt es `herunterladen.py name` und eine Gegenprobe darüber.
+
+## Dateinamen
+
+`2023-07-15_142305.jpg` aus Aufnahmedatum und Uhrzeit – der `sha256` sagt
+niemandem etwas. Keine Umlaute, keine Sonderzeichen, keine Leerzeichen.
+
+**Zwei Aufnahmen aus derselben Sekunde bekommen einen Zusatz** (`-2`, `-3`).
+Das kommt bei Serienbildern vor; im Bestand gibt es Sekunden mit vier
+Aufnahmen. Ein Paket mit zwei gleichnamigen Einträgen packt mancher Entpacker
+stillschweigend übereinander – dann fehlt hinterher ein Bild und niemand weiß,
+welches.
+
+## Das Paket
+
+**Im Datenstrom, nicht im Speicher und nicht auf der Platte.** Python schreibt
+das ZIP direkt nach `stdout`, Datei für Datei: umwandeln, hineinschreiben,
+wegwerfen. Node reicht den Strom durch.
+
+* `allowZip64=True` – über 4 GB ist ein ZIP ohne ZIP64 stillschweigend
+  beschädigt.
+* `ZIP_STORED` statt `DEFLATE` – JPEG, HEIC und MP4 lassen sich nicht mehr
+  zusammendrücken. Das spart die gesamte Rechenzeit.
+* Das UTF-8-Kennzeichen (Flag 0x800) setzt Pythons `zipfile` selbst, sobald ein
+  Name nicht reines ASCII ist; nachgesehen in den Einträgen. Ohne das zeigt
+  Windows Kraut statt Umlauten.
+* `Content-Disposition` trägt den Namen zweimal: als ASCII-Notnagel und als
+  `filename*=UTF-8''…` nach RFC 5987.
+
+`HOECHSTENS_JE_PAKET = 200` steht an einer Stelle. Eine Liste darf 500 Bilder
+fassen – ist sie größer als ein Paket, zeigt die Seite mehrere Knöpfe
+(„Teil 1: Aufnahmen 1–200"), und der Hinweis steht **vor** dem Auslösen.
+
+**Vorher sagen, was kommt:** Anzahl und geschätzte Größe stehen über den
+Knöpfen. Geschätzt wird mit 0,27 Byte je Bildpunkt – gemessen an zwölf
+Aufnahmen waren es 0,266. Bei 55 Bildern hieß die Schätzung 204 MB, geliefert
+wurden 209 MB.
+
+## Ein abgebrochener Download muss den Unterprozess mitnehmen
+
+Das war ein echter Fehler und er ist teuer: `except Exception` um die
+Schreibschleife schluckte den `BrokenPipeError`, wenn der Abnehmer wegging.
+Der Prozess rechnete den Rest des Pakets für niemanden weiter, lief in die
+volle Rohrleitung und blieb dort **für immer** stehen – gemessen an einem Paket
+von zweihundert Bildern.
+
+Jetzt zweifach abgesichert:
+
+* Python reicht `BrokenPipeError` und `EPIPE` durch, statt sie zu den
+  überspringbaren Dateifehlern zu zählen.
+* Node umschließt den Strom, damit `cancel()` den Unterprozess wirklich
+  erwischt (`strom()` in `src/lib/herunterladen.ts`).
+
+Nachgemessen: Download nach zwölf Sekunden abgebrochen → nach einer Sekunde
+läuft kein Unterprozess mehr, und im Journal steht die Zeile dazu.
+
+## Zugriff
+
+Die Anmeldung wird bei jeder Anfrage geprüft, auch beim Paket. Aus einer
+**fremden, freigegebenen** Liste darf heruntergeladen werden – sehen und
+herunterladen gehören zusammen; aus einer nicht freigegebenen nicht, auch nicht
+über die Route direkt, und auch nicht als Verwalter. Vorgemerkt gelöschte
+Aufnahmen fallen aus Liste und Paket heraus, weil `bilderDerListe()` sie über
+`NICHT_GELOESCHT` ausschließt.

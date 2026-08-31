@@ -5,14 +5,18 @@ import {
   SEITENGROESSE, alleIds, dauertext, filterAusSuche, galerielink, istEingeschraenkt,
   monatstext, seite, suchtext, trefferzahlen, zeitraeume, type Kachel,
 } from "@/lib/galerie";
+import { abfrage } from "@/lib/db";
+import { type Groessenzeile } from "@/lib/herunterladen";
 import { eigeneListen } from "@/lib/listen";
 import {
   auswahlAusSuche, auswahlteile, istMarkiert, umschalten,
 } from "@/lib/markierung";
 import { HOECHSTENS_JE_VORGANG } from "@/lib/rechte";
+import { NICHT_GELOESCHT } from "@/lib/sichtbar";
 import { darf, verlangeAnmeldung } from "@/lib/zugriff";
 import Kopf from "../kopf";
 import Auswahlleiste from "./auswahlleiste";
+import Paketformular from "../paketformular";
 import Filterleiste from "./filterleiste";
 
 export const metadata: Metadata = { title: "Galerie" };
@@ -50,6 +54,16 @@ export default async function Galerie({
   // "alle Treffer waehlen" kennt der Server, nicht der Browser: die Kennungen
   // der Bilder, die gerade nicht auf dem Schirm stehen, hat sonst niemand.
   const alleTrefferIds = auswahl.aktiv && eingeschraenkt ? await alleIds(filter) : [];
+
+  // Fuer die Groessenschaetzung des Pakets – nur wenn ueberhaupt etwas
+  // markiert ist, sonst waere es eine Abfrage fuer nichts.
+  const markierteZeilen: Groessenzeile[] = auswahl.ids.length
+    ? await abfrage<Groessenzeile>(
+        `SELECT dateityp, typ, dateigroesse, breite, hoehe
+           FROM bild WHERE id = ANY($1::bigint[]) AND ${NICHT_GELOESCHT}`,
+        [auswahl.ids],
+      )
+    : [];
 
   const gruppen: { jahr: number; monat: number; stuecke: Kachel[] }[] = [];
   for (const k of kacheln) {
@@ -116,6 +130,10 @@ export default async function Galerie({
           darfLoeschen={darf(wer, "loeschen")}
           grenze={HOECHSTENS_JE_VORGANG}
         />
+      ) : null}
+
+      {auswahl.ids.length ? (
+        <Paketformular zeilen={markierteZeilen} ids={auswahl.ids} was="markierte Aufnahmen" />
       ) : null}
 
       {kacheln.length === 0 ? <p className="hinweis">Zu diesen Filtern gibt es nichts.</p> : null}

@@ -313,3 +313,32 @@ Aufräumlauf → drei Dateien weg, Zeile steht, `sha256` unverändert. Dieselbe
 Datei erneut nach `eingang/` gelegt und den Ingest laufen lassen →
 `uebernommen 0, Dubletten 1, davon schon geloescht 1`, kein Original neu
 angelegt, 922 Zeilen unverändert.
+
+---
+
+# Herunterladen (Phase 3b)
+
+`ingest/herunterladen.py` liefert Dateien auf die Standardausgabe – einzeln
+oder als ZIP-Paket. Alles Erklärende geht nach stderr, damit der Strom sauber
+bleibt.
+
+```bash
+tools/herunterladen.sh einzeln --id 42 --art jpeg > bild.jpg
+echo "1 2 3" | tools/herunterladen.sh paket --art jpeg --ordner "Kalender" > paket.zip
+echo "1 2 3" | tools/herunterladen.sh name --art jpeg   # nur die Zieldateinamen
+```
+
+**Die Berechtigung wird hier nicht geprüft.** Das tut die Weboberfläche, die
+weiß, wer angemeldet ist und welche Liste wem gehört. Dieses Werkzeug bekommt
+Kennungen und führt aus.
+
+`name` gibt es nur zum Gegenprüfen: die Regel, wann das Original unverändert
+durchgereicht wird, steht hier (`unveraendert`) und noch einmal in
+`web/src/lib/herunterladen.ts`, weil Node den Dateinamen in die Kopfzeile
+schreiben muss, bevor der Strom läuft.
+
+**`import ableitung` steht absichtlich in der Funktion und nicht oben.** Es
+zieht pillow-heif mit, und das kostet rund eine Drittelsekunde. Wer ein
+Original oder ein Video holt, soll nicht dafür bezahlen – und das ist der
+häufigere Fall. Gemessen: 0,2 s für ein Original gegen 1,5 s für ein
+umgewandeltes HEIC.
