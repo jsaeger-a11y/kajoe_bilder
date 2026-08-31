@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import einordnen                       # noqa: E402
 import metadaten                       # noqa: E402
+import verarbeitung                    # noqa: E402
 from datenbank import gegenprobe, verbindung  # noqa: E402
 
 DATEN = Path("/data/kajoe_bilder")
@@ -124,6 +125,7 @@ class Lauf:
         self.gegengeprueft = False
         self.partner: set[str] = set()
         self.conn = None
+        self.fortschritt: verarbeitung.Lauf | None = None
 
     # -- Buchfuehrung ------------------------------------------------------
 
@@ -136,6 +138,8 @@ class Lauf:
                 (quelle_id,),
             )
             self.lauf_id = cur.fetchone()[0]
+        if self.fortschritt is not None:
+            self.fortschritt.verknuepfe_ingest(self.lauf_id)
 
     def schliesse_ab(self, bemerkung: str | None = None) -> None:
         if self.trocken or self.lauf_id is None:
@@ -151,6 +155,25 @@ class Lauf:
                 (z.gefunden, z.uebernommen, z.dubletten, z.quarantaene,
                  z.uebersprungen, z.mov_mit_bildpartner,
                  self._bemerkung(bemerkung), self.lauf_id),
+            )
+        with self.conn.cursor() as cur:
+            cur.execute("UPDATE ingest_lauf SET aktualisiert_am = now() WHERE id = %s",
+                        (self.lauf_id,))
+
+    def zwischenstand(self) -> None:
+        """Zaehler des laufenden ingest_lauf fortschreiben."""
+        if self.trocken or self.lauf_id is None:
+            return
+        z = self.zaehler
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """UPDATE ingest_lauf
+                      SET gefunden = %s, uebernommen = %s, dubletten = %s,
+                          quarantaene = %s, uebersprungen = %s,
+                          mov_mit_bildpartner = %s, aktualisiert_am = now()
+                    WHERE id = %s""",
+                (z.gefunden, z.uebernommen, z.dubletten, z.quarantaene,
+                 z.uebersprungen, z.mov_mit_bildpartner, self.lauf_id),
             )
 
     def _bemerkung(self, bemerkung: str | None) -> str | None:
@@ -380,6 +403,10 @@ class Lauf:
         self.partner = mov_partner(pfade)
         z.mov_mit_bildpartner = len(self.partner)
 
+        if self.fortschritt is not None:
+            self.fortschritt.gesamt = z.gefunden
+            self.fortschritt.takt(0, erzwingen=True)
+
         print(f"gefunden: {z.gefunden} Datei(en) in {self.eingang}")
         print(f"MOV mit gleichnamiger Bilddatei: {z.mov_mit_bildpartner}")
         if self.trocken:
@@ -427,7 +454,15 @@ class Lauf:
                 print(f"  {erledigt}/{z.gefunden}  "
                       f"uebernommen {z.uebernommen}, Dubletten {z.dubletten}, "
                       f"Quarantaene {z.quarantaene}, uebersprungen {z.uebersprungen}"
-                      f"  ({erledigt/dauer:.1f} Dateien/s)")
+                      f"  ({erledigt/dauer:.1f} Dateien/s)", flush=True)
+                # Der Stand gehoert in die Datenbank, nicht nur auf den
+                # Bildschirm: die Anzeige im Browser liest ihn von dort, und
+                # ein abgebrochener Lauf hinterlaesst so wenigstens eine
+                # wahre Zahl.
+                self.zwischenstand()
+
+            if self.fortschritt is not None:
+                self.fortschritt.takt(erledigt)
 
         print()
         verdaechtig = self.platzhalter_koordinaten()
@@ -474,6 +509,8 @@ def main() -> int:
                    help="hoechstens so viele Dateien bearbeiten (zum Proben)")
     p.add_argument("--trockenlauf", action="store_true",
                    help="nichts verschieben, nichts schreiben")
+    p.add_argument("--angestossen-von", type=int, default=None,
+                   help="Benutzernummer, wenn aus der Oberflaeche angestossen")
     args = p.parse_args()
 
     if not Path(args.eingang).is_dir():
@@ -486,17 +523,36 @@ def main() -> int:
     with verbindung(autocommit=True) as conn:
         lauf.conn = conn
         bemerkung = None
+        zustand = "fertig"
+
+        if not args.trockenlauf:
+            schon = verarbeitung.laeuft_schon(conn)
+            if schon:
+                print(f"FEHLER: es laeuft bereits ein Vorgang "
+                      f"(Nr. {schon[0]}, {schon[1]}).", file=sys.stderr)
+                return 2
+            lauf.fortschritt = verarbeitung.beginne(
+                "einlesen", 0, args.angestossen_von, conn)
+
         try:
             lauf.durchlauf()
         except KeyboardInterrupt:
             bemerkung = "abgebrochen (Strg-C)"
+            zustand = "abgebrochen"
             print("\nabgebrochen – der Stand ist committet, ein neuer Lauf "
                   "macht weiter", file=sys.stderr)
         except SystemExit as fehler:
             bemerkung = str(fehler)
+            zustand = "fehler"
+            raise
+        except Exception as fehler:  # noqa: BLE001
+            bemerkung = f"{type(fehler).__name__}: {fehler}"
+            zustand = "fehler"
             raise
         finally:
             lauf.schliesse_ab(bemerkung)
+            if lauf.fortschritt is not None:
+                lauf.fortschritt.beende(zustand, bemerkung)
             lauf.bericht()
     return 0
 

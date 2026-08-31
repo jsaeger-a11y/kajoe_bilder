@@ -20,7 +20,20 @@ cp systemd/kajoe-sicherung.service systemd/kajoe-sicherung.timer \
 systemctl --user daemon-reload
 systemctl --user enable --now kajoe-sicherung.timer
 systemctl --user enable --now kajoe-web.service
+systemctl --user enable --now kajoe-verarbeiten.path
 ```
+
+`kajoe-verarbeiten.path` wacht über `/data/kajoe_bilder/.anstoss`. Taucht die
+Datei auf, startet `kajoe-verarbeiten.service` und entfernt sie als Erstes.
+Der Dienst selbst wird **nicht** aktiviert – er wird nur ausgelöst.
+
+**In beiden Einheiten steht `StartLimitIntervalSec=0`, und das ist kein
+Beiwerk.** Ohne die Zeile greift systemds Startbegrenzung (fünf Starts in zehn
+Sekunden). Danach steht nicht nur der Dienst auf `start-limit-hit`, sondern die
+**path-Einheit selbst geht auf `failed`** und wacht überhaupt nicht mehr – beim
+nächsten Anstoß passiert dann gar nichts, ohne jede Meldung in der Oberfläche.
+Nachgemessen am 31.08.2026 nach vier Anstößen binnen Sekunden; zurück ging es
+nur mit `systemctl --user reset-failed`.
 
 `kajoe-web.service` braucht vorher einmal `npm run build` in `web/`. Node liegt
 unter `~/.local/node/bin` und steht deshalb ausdruecklich im `PATH` der
@@ -37,6 +50,10 @@ journalctl --user -u kajoe-sicherung.service -n 30
 systemctl --user status kajoe-web.service
 journalctl --user -u kajoe-web.service -n 30     # zeigt auch die Cookie-Zeile
 curl -sI http://127.0.0.1:3000/anmelden | head -1
+
+systemctl --user status kajoe-verarbeiten.path   # muss "active (waiting)" sein
+journalctl --user -u kajoe-verarbeiten.service -n 40
+echo 1 > /data/kajoe_bilder/.anstoss             # Anstoss von Hand
 ```
 
 ## Nach Aenderungen

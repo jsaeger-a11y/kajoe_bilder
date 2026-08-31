@@ -35,7 +35,11 @@ psql_still() {
         psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAq -v ON_ERROR_STOP=1 "$@"
 }
 
-docker ps --format '{{.Names}}' | grep -qx "$CONTAINER" \
+# Kein `docker ps | grep -q`: `grep -q` steigt beim ersten Treffer aus, der
+# Erzeuger bekommt SIGPIPE, und `set -o pipefail` macht daraus einen
+# Fehlschlag der ganzen Leitung – obwohl der Treffer da war. Bei kurzen
+# Ausgaben faellt es nie auf, bis es das eines Tages tut.
+grep -qx "$CONTAINER" <<< "$(docker ps --format '{{.Names}}')" \
     || { echo "FEHLER: Container $CONTAINER laeuft nicht." >&2; exit 1; }
 
 meldung() { printf '%s  %s\n' "$(date -u '+%Y-%m-%d %H:%M:%SZ')" "$*"; }

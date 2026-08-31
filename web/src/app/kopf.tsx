@@ -16,6 +16,7 @@ export default function Kopf({ wer }: { wer: Angemeldet }) {
         <Link href="/galerie">Galerie</Link>
         <Link href="/listen">Listen</Link>
         {darf(wer, "loeschen") ? <Link href="/vorgemerkt">Vorgemerkt</Link> : null}
+        {wer.rolle === "verwalter" ? <Link href="/verarbeiten">Verarbeiten</Link> : null}
         <Link href="/konto">Mein Konto</Link>
         {wer.rolle === "verwalter" ? <Link href="/verwaltung/benutzer">Benutzer</Link> : null}
       </nav>

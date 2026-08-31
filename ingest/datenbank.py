@@ -54,6 +54,26 @@ def verbindung(*, autocommit: bool = True) -> psycopg.Connection:
     )
 
 
+def datenbank_url() -> str:
+    """Verbindungszeichenkette aus den Einzelwerten.
+
+    Sie steht NICHT in der .env. Dort staende das Passwort ein zweites Mal, und
+    zwei Stellen mit demselben Geheimnis sind zwei Staende: am 31.08.2026 hing
+    die Anwendung stundenlang an einem Passwort, das nur an einer der beiden
+    Stellen stimmte, und niemandem fiel es auf – die Anmeldeseite ist die
+    einzige, die ohne Datenbank rendert.
+    """
+    from urllib.parse import quote
+
+    env = lies_env()
+    return (
+        f"postgresql://{quote(env['POSTGRES_USER'])}:"
+        f"{quote(env['POSTGRES_PASSWORD'])}@"
+        f"{env.get('POSTGRES_HOST', '127.0.0.1')}:"
+        f"{env.get('POSTGRES_PORT', '5432')}/{env['POSTGRES_DB']}"
+    )
+
+
 def gegenprobe(sha256: str) -> int:
     """Zaehlt ueber eine ZWEITE Verbindung, ob eine Zeile wirklich steht.
 
@@ -66,4 +86,4 @@ def gegenprobe(sha256: str) -> int:
         return cur.fetchone()[0]
 
 
-__all__ = ["PROJEKT", "gegenprobe", "lies_env", "verbindung"]
+__all__ = ["PROJEKT", "datenbank_url", "gegenprobe", "lies_env", "verbindung"]

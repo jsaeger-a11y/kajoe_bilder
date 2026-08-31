@@ -26,7 +26,9 @@ psql_still() {
 
 # --- Vorbedingungen --------------------------------------------------------
 
-if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+# Kein `… | grep -q`: siehe tools/sicherung.sh – `grep -q` plus `pipefail`
+# meldet einen Fehler, obwohl der Treffer da war.
+if ! grep -qx "$CONTAINER" <<< "$(docker ps --format '{{.Names}}')"; then
     echo "FEHLER: Container '$CONTAINER' laeuft nicht." >&2
     exit 1
 fi
@@ -65,9 +67,9 @@ for DATEI in db/migrations/[0-9][0-9][0-9]-*.sql; do
         STAND=$(psql_still -c \
             "SELECT pruefsumme FROM migrationsstand WHERE nummer = '$NUMMER'")
 
-        if [ -n "$STAND" ] || psql_still -c \
-             "SELECT 1 FROM migrationsstand WHERE nummer = '$NUMMER'" \
-             | grep -q 1; then
+        GELAUFEN=$(psql_still -c \
+             "SELECT 1 FROM migrationsstand WHERE nummer = '$NUMMER'")
+        if [ -n "$STAND" ] || [ -n "$GELAUFEN" ]; then
 
             # Bereits gelaufen. Pruefsumme gegenpruefen, sofern eine da ist:
             # eine nachtraeglich geaenderte Migration laesst Datei und

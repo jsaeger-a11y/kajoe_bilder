@@ -58,6 +58,23 @@ export const DATENBANK = {
 };
 
 /**
+ * Verbindungszeichenkette aus den Einzelwerten.
+ *
+ * Sie steht NICHT in der .env. Dort staende das Passwort ein zweites Mal, und
+ * zwei Stellen mit demselben Geheimnis sind zwei Staende: am 31.08.2026 hing
+ * die Anwendung stundenlang an einem Passwort, das nur an einer der beiden
+ * Stellen stimmte, und niemandem fiel es auf – die Anmeldeseite ist die
+ * einzige, die ohne Datenbank rendert.
+ */
+export function datenbankUrl(): string {
+  const e = encodeURIComponent;
+  return (
+    `postgresql://${e(DATENBANK.user)}:${e(DATENBANK.password)}@` +
+    `${DATENBANK.host}:${DATENBANK.port}/${DATENBANK.database}`
+  );
+}
+
+/**
  * `Secure` heisst: nur ueber HTTPS. Im lokalen Netz laeuft die Anwendung ueber
  * http://webspace:3000, und dann kommt das Cookie NIE an – die Anmeldung
  * schlaegt scheinbar grundlos fehl. `localhost` gilt als sicherer Kontext, ein

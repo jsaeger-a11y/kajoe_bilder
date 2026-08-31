@@ -489,3 +489,72 @@ herunterladen gehören zusammen; aus einer nicht freigegebenen nicht, auch nicht
 über die Route direkt, und auch nicht als Verwalter. Vorgemerkt gelöschte
 Aufnahmen fallen aus Liste und Paket heraus, weil `bilderDerListe()` sie über
 `NICHT_GELOESCHT` ausschließt.
+
+---
+
+# Verarbeitung anstoßen (Phase 4)
+
+`/verarbeiten` – nur für Verwalter. Nicht wegen Missbrauch, sondern weil ein
+versehentlicher Klick Stunden Rechenzeit auslöst.
+
+**Die Anwendung startet keinen Prozess.** Sie schreibt
+`/data/kajoe_bilder/.anstoss`, und `kajoe-verarbeiten.path` erledigt den Rest.
+Ein Kindprozess aus Node hinge am Webdienst: bei jedem Neustart stirbt er mit
+oder bleibt als Waise zurück.
+
+Nachgemessen: während eines Laufs über 8.002 Dateien den Webdienst neu
+gestartet – derselbe Ingest-Prozess (PID unverändert) lief weiter.
+
+## Was die Seite zeigt
+
+Vor dem Anstoßen: **Anzahl und Größe** dessen, was in `eingang/` liegt, samt
+Beispielen. Genau der Abgleich, der am 31.08.2026 einen ganzen Jahrgang im
+falschen Verzeichnis sichtbar gemacht hätte.
+
+**Warnung bei laufender Übertragung:** eine `.filepart` liegt vor, oder die
+jüngste Datei ist keine Minute alt. Als *Hinweis*, nicht als Sperre – der
+Mensch weiß besser als die Heuristik, ob er gerade eine einzelne Datei
+nachgelegt hat.
+
+Ist `eingang/` leer, erscheint kein Knopf, sondern der Satz, dass nichts da
+ist. Läuft etwas, erscheint kein Knopf, sondern der Fortschritt.
+
+## Restzeit: gemessen, nicht geraten
+
+`tempo()` liest die Takte der letzten zwei Minuten aus `verarbeitung_takt` und
+rechnet daraus Dateien je Sekunde. Ein fester Wert je Datei taugt nicht: HEIC
+dauert länger als PNG, und ein Lauf, der gerade an Videos arbeitet, ist
+langsamer als sein Mittelwert vermuten lässt. Bis zwei Messpunkte da sind,
+steht die Schätzung als vorläufig gekennzeichnet.
+
+Gemessen an einem echten Lauf: „einlesen 7.500 von 8.002 (94 %) · läuft seit
+4 min 50 s · noch etwa 19 s (26,1 Dateien/s, gemessen über die letzten
+1 min 55 s)".
+
+## Die Seite hält keine Anfrage offen
+
+`Selbstauffrischung` ruft alle fünf Sekunden `router.refresh()` – eine kurze
+Anfrage, danach ist Ruhe. Kein Long Polling, kein offener Strom. Der Lauf hängt
+nicht an der Seite: Browser schließen, Telefon weglegen, später nachsehen.
+
+Nachgemessen: 150 Sekunden lang rührte kein Klient die Anwendung an; danach
+zeigte ein frisch angemeldeter Klient den Lauf bei 7.500 von 8.002 – dieselbe
+Zahl wie die Datenbank.
+
+## Zweiter Anstoß
+
+Drei Riegel, jeder für sich ausreichend:
+
+1. Die Seite zeigt während eines Laufs keinen Knopf.
+2. Die Server Action prüft `laufend()` und schreibt keine Datei.
+3. `tools/verarbeiten.sh` hält ein `flock` und meldet „Es läuft bereits ein
+   Vorgang".
+
+Geprüft: während eines Laufs die Server Action direkt angesprochen – es
+entstand keine Auslösedatei und keine zweite Zeile in `verarbeitung`. Ein
+Betrachter bekommt an derselben Stelle `ZugriffFehler`.
+
+**Was die Anzeige nicht kann:** wird die Aktion abgewiesen, während ein Lauf
+aktiv ist, sieht der Aufrufer keine Meldung – der Knopf samt seiner
+Fehleranzeige wird in diesem Zustand gar nicht gerendert. Über die Oberfläche
+kommt man nie dorthin; abgewiesen wird trotzdem.

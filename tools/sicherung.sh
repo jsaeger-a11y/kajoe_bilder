@@ -28,7 +28,7 @@ set -a; . "$PROJEKT/.env"; set +a
 : "${POSTGRES_DB:?POSTGRES_DB fehlt in .env}"
 : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD fehlt in .env}"
 
-docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null | grep -qx true \
+[ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null)" = "true" ] \
     || fehler "Container $CONTAINER laeuft nicht – keine Sicherung moeglich"
 
 mkdir -p "$ZIEL"
@@ -53,11 +53,25 @@ docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$CONTAINER" \
 
 # Nicht nur auf den Rueckgabewert verlassen: pg_restore muss die Datei auch
 # lesen koennen und das Grundschema muss darin vorkommen.
-docker exec -i "$CONTAINER" pg_restore --list < "$ROH" > /dev/null 2>&1 \
+#
+# Das Inhaltsverzeichnis wird EINMAL in eine Variable gelesen und dann geprueft
+# – ausdruecklich nicht ueber eine Rohrleitung nach `grep -q`. Der steigt beim
+# ersten Treffer aus, pg_restore bekommt SIGPIPE, und `set -o pipefail` macht
+# daraus einen Fehlschlag der ganzen Leitung, OBWOHL der Treffer da war. Bei
+# kleinen Sicherungen faellt das nie auf, weil pg_restore vorher fertig ist;
+# ab einer gewissen Groesse kippt es, und dann schlaegt jede Sicherung fehl.
+# Genau so ist es am 31.08.2026 passiert.
+LISTE=$(docker exec -i "$CONTAINER" pg_restore --list < "$ROH" 2>/dev/null) \
     || fehler "Sicherung ist nicht lesbar (pg_restore --list)"
-docker exec -i "$CONTAINER" pg_restore --list < "$ROH" 2>/dev/null \
-    | grep -q 'TABLE .* bild ' \
+
+grep -q 'TABLE .* bild ' <<< "$LISTE" \
     || fehler "Sicherung enthaelt die Tabelle 'bild' nicht"
+
+# Und gleich noch die Zahl der Tabellen: eine Sicherung mit dem halben Schema
+# ist schlimmer als gar keine, weil sie aussieht wie eine.
+TABELLEN=$(grep -c '^[0-9;. ]* TABLE ' <<< "$LISTE" || true)
+[ "${TABELLEN:-0}" -ge 8 ] \
+    || fehler "Sicherung enthaelt nur $TABELLEN Tabellen – zu wenige"
 
 mv "$ROH" "$DATEI"
 trap - EXIT

@@ -245,3 +245,12 @@ img, video { max-width: 100%; height: auto; }
 .herunterladen a.haupt {
   background: var(--betont); border-color: var(--betont); color: var(--grund);
 }
+
+/* --- Fortschritt -------------------------------------------------------- */
+
+.balken {
+  height: .6rem; border-radius: 999px; overflow: hidden;
+  background: var(--rand); margin: .5rem 0;
+}
+.balken span { display: block; height: 100%; background: var(--betont);
+               transition: width .5s linear; }

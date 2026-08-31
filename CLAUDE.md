@@ -392,3 +392,39 @@ Täglicher `pg_dump` ab Phase 0, nicht später.
   Markup. Bei React sagt `defaultChecked` im Quelltext nichts darüber, was das Formular
   tatsächlich abschickt
 
+- **`BIGINT` liefert der Postgres-Treiber als Zeichenkette**, ganz gleich, was der
+  TypeScript-Typ behauptet. […]
+- **Die Bindung auf `0.0.0.0` ist bis zum Cloudflare Tunnel Absicht.** Das lokale Netz
+  ist über `ufw` auf `192.168.188.0/24` begrenzt, deshalb steht `COOKIE_SECURE` auf 0 –
+  über `http://webspace:3000` käme ein `Secure`-Cookie nie an. **Mit dem Tunnel gehört
+  beides zurück:** `-H 127.0.0.1` in `systemd/kajoe-web.service` und `COOKIE_SECURE=1`
+  in der `.env`. Ohne diese Notiz wird der Zustand entweder „repariert", solange er
+  richtig ist, oder er bleibt stehen, wenn er falsch geworden ist
+- **Kein zweiter Ort für dasselbe Geheimnis.** `DATABASE_URL` stand als eigener Eintrag
+  in der `.env` und enthielt das Passwort ein zweites Mal. Am 31.08.2026 hing die
+  Anwendung stundenlang an einem Passwort, das nur an einer Stelle stimmte, und
+  niemandem fiel es auf. Wer eine Verbindungszeichenkette braucht, setzt sie aus den
+  Einzelwerten zusammen: `datenbank.datenbank_url()` in Python,
+  `datenbankUrl()` in `web/src/lib/umgebung.ts`
+- **`except Exception` schluckt `BrokenPipeError`.** Ein Paket, dessen Abnehmer weggeht,
+  wird sonst zu Ende gerechnet, läuft in die volle Rohrleitung und bleibt dort für immer
+  stehen. Abbrüche gehören durchgereicht, nicht behandelt – erst danach kommt der
+  Auffangzweig für kaputte Einzeldateien
+- **Eine Seite, die ohne Datenbank rendert, verdeckt einen Totalausfall.** `/anmelden`
+  liest nur ein Cookie und antwortet mit 200, während alles dahinter tot ist. Deshalb
+  steht in `tools/status.sh` eine **echte Abfrage mit den Zugangsdaten der Anwendung**,
+  über `127.0.0.1:5432` und nicht über `docker exec` – im Container gilt für den
+  Unix-Socket `trust`, dort wird das Passwort gar nicht geprüft
+- **`set -o pipefail` und `grep -q` vertragen sich nicht.** `grep -q` steigt beim
+  ersten Treffer aus, der Erzeuger bekommt SIGPIPE und endet mit 141, und `pipefail`
+  macht daraus einen Fehlschlag der ganzen Leitung – **obwohl der Treffer da war**.
+  Bei kurzen Ausgaben gewinnt der Erzeuger das Rennen und es fällt nie auf; ab einer
+  gewissen Größe kippt es. Genau so schlug am 31.08.2026 jede Sicherung fehl, sobald
+  der Dump 1,5 MB überschritt – die Prüfung „enthält die Tabelle `bild`" meldete Nein,
+  während die Tabelle drin war. Stattdessen einmal in eine Variable lesen und mit
+  `grep … <<< "$VAR"` prüfen
+- **`const enum` aus einer Bibliothek nie im Code verwenden.** TypeScript löscht die
+  Aufzählung beim Übersetzen; zur Laufzeit ist das Objekt leer, und was ankommt, ist
+  `undefined`. Mit `isolatedModules` – das Next voraussetzt – bricht `tsc` immerhin ab,
+  sonst liefe es still ins Leere. Stattdessen den Zahlenwert schreiben, mit der
+  Begründung daneben (so in `web/src/lib/passwort.ts` bei argon2id).

@@ -1,0 +1,26 @@
+# Wacht ueber die Auslesedatei.
+#
+# Die Weboberflaeche schreibt /data/kajoe_bilder/.anstoss – mehr tut sie nicht.
+# Diese Einheit startet daraufhin kajoe-verarbeiten.service, und der entfernt
+# die Datei als Erstes.
+#
+# Der Weg ueber eine Datei statt ueber `systemctl --user start` aus Node hat
+# zwei Vorteile: die Anwendung ruft keinen Prozess auf, und sie braucht keinen
+# Zugang zur Dienstverwaltung.
+
+[Unit]
+Description=kajoe_bilder – wartet auf den Anstoss zur Verarbeitung
+
+# Auch hier, und das ist der wichtigere Ort: loest die path-Einheit den Dienst
+# oefter aus, als dessen Startbegrenzung erlaubt, geht SIE SELBST auf "failed
+# (unit-start-limit-hit)" und wacht danach ueberhaupt nicht mehr. Dann passiert
+# beim naechsten Anstoss gar nichts, ohne jede Meldung in der Oberflaeche –
+# nachgemessen am 31.08.2026, nach vier Anstoessen binnen Sekunden.
+StartLimitIntervalSec=0
+
+[Path]
+PathExists=/data/kajoe_bilder/.anstoss
+Unit=kajoe-verarbeiten.service
+
+[Install]
+WantedBy=paths.target

@@ -30,6 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ableitung                       # noqa: E402
+import verarbeitung                    # noqa: E402
 from datenbank import verbindung       # noqa: E402
 
 DATEN = Path("/data/kajoe_bilder")
@@ -50,6 +51,8 @@ def main() -> int:
                    help="auch Zeilen bearbeiten, die schon als erzeugt gelten")
     p.add_argument("--pruefen", action="store_true",
                    help="zusaetzlich nachsehen, ob die Dateien wirklich da sind")
+    p.add_argument("--angestossen-von", type=int, default=None,
+                   help="Benutzernummer, wenn aus der Oberflaeche angestossen")
     args = p.parse_args()
 
     original = Path(args.original)
@@ -65,6 +68,12 @@ def main() -> int:
     fehler: list[tuple[str, str]] = []
 
     with verbindung(autocommit=True) as conn:
+        schon = verarbeitung.laeuft_schon(conn)
+        if schon:
+            print(f"FEHLER: es laeuft bereits ein Vorgang "
+                  f"(Nr. {schon[0]}, {schon[1]}).", file=sys.stderr)
+            return 2
+
         with conn.cursor() as cur:
             cur.execute(f"""SELECT id, sha256, pfad, typ, jahr, monat,
                                    dauer_sekunden, hdr, vorschau_erzeugt
@@ -84,6 +93,10 @@ def main() -> int:
                 cur.execute("""SELECT count(*) FROM bild
                                 WHERE geloescht_am IS NULL AND vorschau_erzeugt""")
                 zaehler["uebersprungen"] = cur.fetchone()[0]
+
+        fortschritt = verarbeitung.beginne(
+            "ableiten", len(zeilen), args.angestossen_von, conn)
+        fortschritt.takt(0, erzwingen=True)
 
         print(f"{len(zeilen)} von {gesamt} Zeile(n) zu bearbeiten")
         nutzbar, grund = ableitung.vaapi_verfuegbar()
@@ -117,7 +130,11 @@ def main() -> int:
                 zaehler["fehlgeschlagen"] += 1
                 text = f"{type(f).__name__}: {f}"
                 fehler.append((pfad, text))
-                print(f"    FEHLER {pfad}: {text}")
+                # Namentlich, nicht nur gezaehlt: wer am Ende drei
+                # Fehlschlaege sieht und nicht weiss, welche Dateien es
+                # waren, kann damit nichts anfangen.
+                fortschritt.fehler(pfad, text, bild_id)
+                print(f"    FEHLER {pfad}: {text}", flush=True)
                 continue
 
             # Erst die Dateien, dann das Flag. Andersherum stuende ein Bild als
@@ -128,12 +145,22 @@ def main() -> int:
                             (bild_id,))
             zaehler["erzeugt"] += 1
 
+            fortschritt.takt(i)
+
             if i % FORTSCHRITT_ALLE == 0:
                 d = time.monotonic() - beginn
                 print(f"  {i}/{len(zeilen)}  erzeugt {zaehler['erzeugt']}, "
                       f"uebersprungen {zaehler['uebersprungen']}, "
                       f"fehlgeschlagen {zaehler['fehlgeschlagen']}  "
-                      f"({i/d:.1f} Dateien/s)")
+                      f"({i/d:.1f} Dateien/s)", flush=True)
+
+        fortschritt.beende(
+            "fertig" if not zaehler["fehlgeschlagen"] else "fehler",
+            None if not fehler else f"{len(fehler)} Fehlschlag(e)",
+            erzeugt=zaehler["erzeugt"],
+            uebersprungen=zaehler["uebersprungen"],
+            fehlgeschlagen=zaehler["fehlgeschlagen"],
+        )
 
     print("\n--- Lauf ---")
     for name in ("erzeugt", "uebersprungen", "fehlgeschlagen"):

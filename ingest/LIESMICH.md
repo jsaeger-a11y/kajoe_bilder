@@ -342,3 +342,52 @@ zieht pillow-heif mit, und das kostet rund eine Drittelsekunde. Wer ein
 Original oder ein Video holt, soll nicht dafür bezahlen – und das ist der
 häufigere Fall. Gemessen: 0,2 s für ein Original gegen 1,5 s für ein
 umgewandeltes HEIC.
+
+---
+
+# Verarbeitung anstoßen (Phase 4)
+
+```bash
+tools/verarbeiten.sh          # einlesen, dann ableiten – von Hand
+tools/einlesen.sh             # nur einlesen
+tools/ableiten.sh             # nur ableiten
+echo 1 > /data/kajoe_bilder/.anstoss    # dasselbe über systemd
+```
+
+**Der Lauf gehört systemd, nicht der Weboberfläche.** Ein Kindprozess aus Node
+heraus hinge am Webdienst: bei jedem Neustart stirbt er mit oder bleibt als
+Waise zurück. Die Anwendung schreibt deshalb nur `/data/kajoe_bilder/.anstoss`;
+`kajoe-verarbeiten.path` sieht die Datei und startet den Dienst, der sie als
+Erstes entfernt.
+
+Nachgemessen: während eines Laufs über 8.002 Dateien den Webdienst neu
+gestartet – derselbe Ingest-Prozess lief unverändert weiter.
+
+## Die Sperre ist ein flock, keine Datei
+
+`tools/verarbeiten.sh` hält ein `flock` auf `.sperre`. Der Kern gibt es frei,
+sobald der Prozess endet – **auch wenn er abstürzt**. Eine selbstgebaute
+Sperrdatei, die niemand aufräumt, blockiert dagegen dauerhaft.
+
+Nachgemessen: Sperre von Hand gehalten → Anstoß meldet „Es läuft bereits ein
+Vorgang"; Halteprozess mit `kill -9` beendet → die Datei liegt noch da, ist
+aber frei, und der nächste Anstoß läuft.
+
+## Verwaiste Zeilen in `verarbeitung`
+
+Eine Zeile mit `zustand = 'laeuft'`, deren Prozess es nicht mehr gibt, würde
+jeden weiteren Anstoß blockieren – dieselbe Falle auf der Datenbankseite.
+`verarbeitung.verwaiste_aufraeumen()` (Python) und `verwaisteAufraeumen()`
+(Node) fragen mit `kill(pid, 0)` nach, ob es den Prozess noch gibt, und setzen
+die Zeile sonst auf `abgebrochen`. Beide Wege sind geprüft.
+
+## Fortschritt
+
+Beide Schritte schreiben alle **100 Dateien** ihren Stand fort – in
+`verarbeitung` (Stand) und in `verarbeitung_takt` (Verlauf). Aus einem
+einzelnen Stand lässt sich keine Restzeit rechnen; erst zwei Messpunkte ergeben
+ein Tempo, und das Tempo der letzten zwei Minuten ist etwas anderes als der
+Durchschnitt seit dem Start.
+
+`ingest_lauf` wird jetzt ebenfalls unterwegs fortgeschrieben. Bricht ein Lauf
+ab, steht in der Zeile trotzdem, wie weit er kam.

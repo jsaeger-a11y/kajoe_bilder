@@ -1,0 +1,38 @@
+# Einlesen und Ableiten, angestossen ueber die Auslesedatei.
+#
+# Der Lauf gehoert systemd und nicht der Weboberflaeche: ein Kindprozess aus
+# Node haengt am Webdienst und stirbt bei dessen Neustart mit.
+
+[Unit]
+Description=kajoe_bilder – einlesen und ableiten
+Documentation=file:///home/jsaeger/webspace/kajoe_bilder/ingest/LIESMICH.md
+After=docker.service
+Wants=docker.service
+
+# Ohne diese Zeile greift systemds Startbegrenzung: fuenf Starts in zehn
+# Sekunden, danach "start-limit-hit", und der Dienst startet auch beim
+# naechsten Anstoss nicht mehr, bis jemand `systemctl reset-failed` aufruft.
+# Genau das trifft den Fall, in dem ein Mensch zweimal klickt – und es faellt
+# erst auf, wenn nichts mehr passiert. Angestossen wird hier von Hand, nicht
+# von einer Schleife; eine Begrenzung schadet mehr, als sie nuetzt.
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jsaeger/webspace/kajoe_bilder
+
+# systemd kennt ~/.bashrc nicht. exiftool und ffmpeg liegen in /usr/bin,
+# node unter ~/.local/node/bin.
+Environment=PATH=/home/jsaeger/.local/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Der Postgres-Treiber liest `timestamp without time zone` in der Ortszeit des
+# Prozesses. aufnahme_lokal ist bewusst zeitzonenlos.
+Environment=TZ=UTC
+
+ExecStart=/home/jsaeger/webspace/kajoe_bilder/tools/verarbeiten.sh
+
+# Ein Lauf ueber siebzehntausend Dateien dauert Stunden. Kein Zeitlimit.
+TimeoutStartSec=infinity
+
+# Nicht neu starten: ein gescheiterter Lauf soll gescheitert bleiben und im
+# Journal stehen, nicht in einer Schleife dieselbe kaputte Datei versuchen.
+Restart=no

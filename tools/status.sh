@@ -60,6 +60,39 @@ else
         -c "SELECT pg_size_pretty(pg_database_size('$POSTGRES_DB'));" 2>/dev/null)
     printf '  %-18s %10s\n' "(Datenbank gesamt)" "$GROESSE"
     echo "  Hinweis: n_live_tup ist eine Schaetzung des Planers, kein COUNT(*)."
+
+    # --- Die entscheidende Pruefung ---------------------------------------
+    # Alles darueber lief ueber `docker exec`, also ueber den Unix-Socket im
+    # Container – und dort gilt `trust`: das Passwort wird gar nicht geprueft.
+    # Die Anwendung kommt aber von aussen ueber 127.0.0.1:5432 und muss sich
+    # ausweisen. Am 31.08.2026 stimmte das Passwort dort nicht mehr, die ganze
+    # Anwendung war unten, und nichts davon fiel auf: die Anmeldeseite ist die
+    # einzige Seite, die ohne Datenbank rendert.
+    #
+    # Deshalb hier eine ECHTE Abfrage auf dem Weg der Anwendung.
+    PYTHON="$PROJEKT/ingest/.venv/bin/python"
+    if [ -x "$PYTHON" ]; then
+        ANTWORT=$(KAJOE_INGEST="$PROJEKT/ingest" "$PYTHON" - <<'PY' 2>&1
+import os, sys
+sys.path.insert(0, os.environ["KAJOE_INGEST"])
+try:
+    from datenbank import verbindung
+    with verbindung() as c, c.cursor() as k:
+        k.execute("SELECT count(*) FROM bild")
+        print(f"ok {k.fetchone()[0]}")
+except Exception as fehler:
+    print(f"FEHLER {type(fehler).__name__}: {str(fehler).strip().splitlines()[0][:90]}")
+PY
+        )
+        case "$ANTWORT" in
+            ok\ *) printf '  %-18s %s\n' "Zugang der Anwendung" \
+                        "ueber 127.0.0.1:5432 mit Passwort – ok (${ANTWORT#ok } Zeilen in bild)" ;;
+            *)     printf '  %-18s %s\n' "Zugang der Anwendung" "$ANTWORT"
+                   echo "  ACHTUNG: die Anwendung kommt NICHT an die Datenbank." ;;
+        esac
+    else
+        echo "  Zugang der Anwendung nicht geprueft – ingest/.venv fehlt"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
