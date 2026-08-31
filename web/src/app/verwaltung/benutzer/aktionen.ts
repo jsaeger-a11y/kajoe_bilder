@@ -116,6 +116,51 @@ export async function rechtUmschalten(formular: FormData): Promise<void> {
   revalidatePath("/verwaltung/benutzer");
 }
 
+/**
+ * Die freigeschalteten Jahrgaenge setzen.
+ *
+ * Drei Faelle, und der erste ist der wichtige:
+ *
+ * - `alle=1` schreibt **NULL**: alle Jahre, auch kuenftige. Das ist die
+ *   Vorgabe und der Normalfall. Der Unterschied zu einer Liste aller heute
+ *   vorhandenen Jahre ist der ganze Punkt – bei NULL erscheint 2027 von
+ *   selbst, sobald die ersten Bilder aus 2027 eingelesen sind.
+ * - angekreuzte Jahre schreiben genau diese.
+ * - nichts angekreuzt schreibt die leere Liste: keines.
+ *
+ * Uebernommen werden nur Jahre, die es in `bild` auch wirklich gibt – die
+ * Kaestchen kommen aus den Daten, und was von aussen zurueckkommt, wird an
+ * denselben Daten geprueft.
+ */
+export async function jahreSetzen(formular: FormData): Promise<void> {
+  await aktionVerwalter();
+  const id = Number(formular.get("id"));
+  if (!Number.isInteger(id)) throw new Error("Ungueltige Eingabe.");
+
+  const alle = String(formular.get("alle") ?? "") === "1";
+  if (alle) {
+    await abfrage(`UPDATE benutzer SET jahre = NULL WHERE id = $1`, [id]);
+  } else {
+    const vorhanden = await abfrage<{ jahr: number }>(
+      `SELECT DISTINCT jahr FROM bild WHERE geloescht_am IS NULL`,
+    );
+    const gueltig = new Set(vorhanden.map((z) => Number(z.jahr)));
+    const gewaehlt = formular
+      .getAll("jahr")
+      .map((w) => Number(w))
+      .filter((j) => Number.isInteger(j) && gueltig.has(j))
+      .sort((a, b) => a - b);
+    await abfrage(`UPDATE benutzer SET jahre = $2::smallint[] WHERE id = $1`, [id, gewaehlt]);
+  }
+
+  // Die Sitzung liest die Jahrgaenge bei jedem Aufruf frisch aus der
+  // Datenbank – niemand muss sich neu anmelden, und niemand behaelt einen
+  // Jahrgang, der ihm gerade entzogen wurde.
+  revalidatePath("/verwaltung/benutzer");
+  revalidatePath("/galerie");
+  revalidatePath("/");
+}
+
 export async function fehlversucheZuruecksetzen(formular: FormData): Promise<void> {
   await aktionVerwalter();
   const id = Number(formular.get("id"));

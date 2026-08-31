@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import {
   anlegen, bilderEntfernen, entfernen, freigabeSetzen, umbenennen,
 } from "@/lib/listen";
+import { sichtVon } from "@/lib/sichtbar";
 import { aktionAngemeldet } from "@/lib/zugriff";
 
 export interface Zustand {
@@ -70,7 +71,7 @@ export async function bildAusListe(formular: FormData): Promise<void> {
     throw new Error("Unbrauchbare Angabe.");
   }
 
-  const ergebnis = await bilderEntfernen(listeId, wer.benutzerId, [bildId]);
+  const ergebnis = await bilderEntfernen(listeId, wer.benutzerId, [bildId], sichtVon(wer));
   if (!ergebnis.ok) throw new Error(ergebnis.fehler);
   revalidatePath(`/listen/${listeId}`);
 }

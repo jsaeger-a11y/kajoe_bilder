@@ -383,3 +383,19 @@ main.weit { max-width: 78rem; }
   .leiste nav { gap: 0 .85rem; font-size: .9rem; }
   .leiste nav a { min-height: 2.1rem; }
 }
+
+/* --- Jahrgaenge in der Benutzerverwaltung ------------------------------- */
+
+.jahreszeile > td { background: var(--feld); padding: 1rem 1.25rem; }
+.jahreszeile p { margin: .35rem 0; }
+
+.ankreuz {
+  display: inline-flex; align-items: center; gap: .4rem;
+  margin: 0; padding: .35rem .1rem; font-size: .95rem; color: inherit;
+  min-height: 2.25rem; cursor: pointer;
+}
+.ankreuz input { width: 1.1rem; height: 1.1rem; }
+
+.jahrekaesten { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; margin: .25rem 0 .5rem; }
+
+.klein-verweis { font-size: .85rem; white-space: nowrap; }

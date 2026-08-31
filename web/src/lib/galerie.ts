@@ -11,7 +11,7 @@ import "server-only";
 
 import { abfrage, eineZeile } from "./db";
 import { HOECHSTENS_JE_VORGANG } from "./rechte";
-import { NICHT_GELOESCHT } from "./sichtbar";
+import { sichtbar, type Bedingung, type Sicht } from "./sichtbar";
 
 /** Seitengroesse an EINER Stelle. Bei 922 Zeilen faellt sie nicht auf, bei 14.000 schon. */
 export const SEITENGROESSE = 60;
@@ -130,15 +130,18 @@ export function istEingeschraenkt(filter: Filter): boolean {
   );
 }
 
-interface Bedingung {
-  text: string;
-  werte: unknown[];
-}
-
-/** WHERE-Teil ohne das fuehrende WHERE. `ausser` laesst einen Filter weg. */
-export function bedingung(filter: Filter, ausser?: keyof Filter): Bedingung {
-  const teile = [NICHT_GELOESCHT];
-  const werte: unknown[] = [];
+/**
+ * WHERE-Teil ohne das fuehrende WHERE. `ausser` laesst einen Filter weg.
+ *
+ * `sicht` steht vorn und ist nicht wegzulassen: sie ist keine Einstellung des
+ * Benutzers, sondern das, was er ueberhaupt sehen darf. Wer diese Funktion
+ * aufruft, muss deshalb wissen, fuer wen die Abfrage laeuft – ein Aufruf ohne
+ * diese Angabe uebersetzt gar nicht erst.
+ */
+export function bedingung(filter: Filter, sicht: Sicht, ausser?: keyof Filter): Bedingung {
+  const s = sichtbar(sicht);
+  const teile = [s.text];
+  const werte: unknown[] = [...s.werte];
 
   if (filter.jahr !== null && ausser !== "jahr") {
     werte.push(filter.jahr);
@@ -179,8 +182,11 @@ export interface Kachel {
   vorschau_erzeugt: boolean;
 }
 
-export async function seite(filter: Filter): Promise<{ kacheln: Kachel[]; treffer: number }> {
-  const b = bedingung(filter);
+export async function seite(
+  filter: Filter,
+  sicht: Sicht,
+): Promise<{ kacheln: Kachel[]; treffer: number }> {
+  const b = bedingung(filter, sicht);
   const versatz = (filter.seite - 1) * SEITENGROESSE;
 
   // id::int – BIGINT kommt sonst als Zeichenkette aus dem Treiber, und wer
@@ -209,15 +215,15 @@ export async function seite(filter: Filter): Promise<{ kacheln: Kachel[]; treffe
  * Wer 665 von 922 sieht, versteht die Vorgabe; wer nur 665 sieht, haelt sie
  * fuer alles.
  */
-export async function trefferzahlen(filter: Filter): Promise<{
+export async function trefferzahlen(filter: Filter, sicht: Sicht): Promise<{
   gesamt: number;
   jeHerkunft: Record<string, number>;
   jeTyp: Record<string, number>;
   jeOrt: Record<string, number>;
 }> {
-  const ohneHerkunft = bedingung(filter, "herkunft");
-  const ohneTyp = bedingung(filter, "typ");
-  const ohneOrt = bedingung(filter, "ort");
+  const ohneHerkunft = bedingung(filter, sicht, "herkunft");
+  const ohneTyp = bedingung(filter, sicht, "typ");
+  const ohneOrt = bedingung(filter, sicht, "ort");
 
   const [h, t, o, g] = await Promise.all([
     abfrage<{ herkunft: string; anzahl: string }>(
@@ -233,7 +239,16 @@ export async function trefferzahlen(filter: Filter): Promise<{
               count(*) AS anzahl FROM bild WHERE ${ohneOrt.text} GROUP BY 1`,
       ohneOrt.werte,
     ),
-    eineZeile<{ anzahl: string }>(`SELECT count(*) AS anzahl FROM bild WHERE ${NICHT_GELOESCHT}`),
+    // "gesamt" ist alles, was DIESE Person sehen darf – ohne Filter, aber
+    // nicht ohne Sicht. Sonst stuende in der Galerie "607 von 16.232", und
+    // die zweite Zahl waere ein Bestand, den es fuer sie nicht gibt.
+    (async () => {
+      const alles = sichtbar(sicht);
+      return eineZeile<{ anzahl: string }>(
+        `SELECT count(*) AS anzahl FROM bild WHERE ${alles.text}`,
+        alles.werte,
+      );
+    })(),
   ]);
 
   const zu = <S extends string>(zeilen: { anzahl: string }[], schluessel: S) =>
@@ -250,10 +265,11 @@ export async function trefferzahlen(filter: Filter): Promise<{
 }
 
 /** Jahre und Monate mit Anzahl – unter allen Filtern ausser Jahr und Monat. */
-export async function zeitraeume(filter: Filter): Promise<
-  { jahr: number; monat: number; anzahl: number }[]
-> {
-  const ohneJahr = bedingung({ ...filter, monat: null }, "jahr");
+export async function zeitraeume(
+  filter: Filter,
+  sicht: Sicht,
+): Promise<{ jahr: number; monat: number; anzahl: number }[]> {
+  const ohneJahr = bedingung({ ...filter, monat: null }, sicht, "jahr");
   const zeilen = await abfrage<{ jahr: number; monat: number; anzahl: string }>(
     `SELECT jahr, monat, count(*) AS anzahl FROM bild WHERE ${ohneJahr.text}
       GROUP BY 1, 2 ORDER BY 1 DESC, 2 DESC`,
@@ -271,10 +287,11 @@ export async function zeitraeume(filter: Filter): Promise<
  */
 export async function nachbarn(
   filter: Filter,
+  sicht: Sicht,
   aufnahme: Date,
   id: number,
 ): Promise<{ vorher: number | null; nachher: number | null; stelle: number; treffer: number }> {
-  const b = bedingung(filter);
+  const b = bedingung(filter, sicht);
   const n = b.werte.length;
 
   const [neuer, aelter, davor, gesamt] = await Promise.all([
@@ -313,8 +330,8 @@ export async function nachbarn(
  * beim Markieren und nicht erst beim Abschicken: wer zweihundert Bilder
  * auswaehlt und danach abgewiesen wird, hat die Arbeit umsonst gemacht.
  */
-export async function alleIds(filter: Filter): Promise<number[]> {
-  const b = bedingung(filter);
+export async function alleIds(filter: Filter, sicht: Sicht): Promise<number[]> {
+  const b = bedingung(filter, sicht);
   const zeilen = await abfrage<{ id: number }>(
     `SELECT id::int AS id FROM bild WHERE ${b.text}
       ORDER BY aufnahme_lokal DESC, id DESC LIMIT ${HOECHSTENS_JE_VORGANG}`,

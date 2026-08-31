@@ -33,6 +33,9 @@ function hilfe(): never {
   abschalten <name>                aktiv = false, beendet alle Sitzungen
   einschalten <name>               aktiv = true
   entsperren <name>                fehlversuche = 0
+  jahre <name> alle|keine|2024,2025
+                                   Jahrgaenge freischalten. "alle" heisst
+                                   NULL: alle Jahre, auch kuenftige.
   sitzungen                        laufende Sitzungen zeigen
 
 Passwoerter werden abgefragt, nie als Argument uebergeben.
@@ -94,7 +97,7 @@ async function kontoNummer(name: string): Promise<number> {
 
 async function liste(): Promise<void> {
   const { rows } = await vorrat.query(
-    `SELECT b.id::int AS id, b.benutzername, b.rolle, b.aktiv, b.fehlversuche,
+    `SELECT b.id::int AS id, b.benutzername, b.rolle, b.aktiv, b.fehlversuche, b.jahre,
             to_char(b.letzte_anmeldung, 'YYYY-MM-DD HH24:MI') AS letzte,
             (SELECT count(*) FROM sitzung s
               WHERE s.benutzer_id = b.id AND s.laeuft_ab_am > now()) AS sitzungen
@@ -104,8 +107,20 @@ async function liste(): Promise<void> {
     console.log("Noch kein Konto angelegt.");
     return;
   }
-  console.log("Nr.  Name                 Rolle       Zustand       Fehl  Sitz  letzte Anmeldung");
+  console.log(
+    "Nr.  Name                 Rolle       Zustand       Fehl  Sitz  Jahrgaenge        letzte Anmeldung",
+  );
   for (const z of rows) {
+    // Ein Verwalter ist nie eingeschraenkt, unabhaengig vom Feld – das steht
+    // hier genauso dran, sonst liest jemand eine Liste und glaubt, sie gelte.
+    const jahre =
+      z.rolle === "verwalter"
+        ? "alle (Verwalter)"
+        : z.jahre === null
+          ? "alle + kuenftige"
+          : z.jahre.length === 0
+            ? "KEINE"
+            : z.jahre.join(",");
     console.log(
       String(z.id).padEnd(5) +
         String(z.benutzername).padEnd(21) +
@@ -113,6 +128,7 @@ async function liste(): Promise<void> {
         (z.aktiv ? "aktiv" : "abgeschaltet").padEnd(14) +
         String(z.fehlversuche).padEnd(6) +
         String(z.sitzungen).padEnd(6) +
+        jahre.padEnd(18) +
         (z.letzte ?? "–"),
     );
   }
@@ -190,6 +206,51 @@ async function main(): Promise<void> {
       const id = await kontoNummer(name);
       await vorrat.query(`UPDATE benutzer SET rolle = $2 WHERE id = $1`, [id, dritt]);
       console.log(`${name} ist jetzt ${dritt}.`);
+      break;
+    }
+
+    /**
+     * Jahrgaenge von der Kommandozeile setzen.
+     *
+     * Der Weg fuer den Alltag ist die Benutzerverwaltung. Dieser hier ist der
+     * Rueckweg, wenn niemand mehr hineinkommt – so wie das erste Konto auch
+     * hier und nirgends sonst entsteht.
+     */
+    case "jahre": {
+      if (!name || !dritt) hilfe();
+      const id = await kontoNummer(name);
+
+      if (dritt === "alle") {
+        await vorrat.query(`UPDATE benutzer SET jahre = NULL WHERE id = $1`, [id]);
+        console.log(`${name}: alle Jahre, auch kuenftige.`);
+        break;
+      }
+
+      const gewaehlt =
+        dritt === "keine"
+          ? []
+          : [...new Set(dritt.split(",").map((s) => Number(s.trim())))].sort((a, b) => a - b);
+      if (gewaehlt.some((j) => !Number.isInteger(j) || j < 1900 || j > 2999)) {
+        throw new Error("Jahre als Zahlen mit Komma dazwischen, z.B. 2024,2025.");
+      }
+
+      const { rows: da } = await vorrat.query(
+        `SELECT DISTINCT jahr FROM bild WHERE geloescht_am IS NULL`,
+      );
+      const vorhanden = new Set(da.map((z) => Number(z.jahr)));
+      const unbekannt = gewaehlt.filter((j) => !vorhanden.has(j));
+
+      await vorrat.query(`UPDATE benutzer SET jahre = $2::smallint[] WHERE id = $1`, [
+        id, gewaehlt,
+      ]);
+      console.log(
+        `${name}: ${gewaehlt.length ? gewaehlt.join(", ") : "KEIN Jahrgang"}.` +
+          // Nicht abweisen, nur sagen: ein Jahrgang, der noch nicht eingelesen
+          // ist, laesst sich sinnvoll vorab freischalten.
+          (unbekannt.length
+            ? ` Hinweis: ${unbekannt.join(", ")} gibt es im Bestand (noch) nicht.`
+            : ""),
+      );
       break;
     }
 

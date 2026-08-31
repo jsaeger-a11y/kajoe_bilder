@@ -148,7 +148,14 @@ der UHD 630 ist das eine Sache von Sekunden.
 
 Benutzername und Passwort, keine offene Registrierung. Zwei Rollen: **Verwalter**
 (legt Benutzer an, darf Stapel löschen) und **Betrachter** (sieht, sammelt, lädt
-herunter). Feiner wird es nicht – es gibt keinen Jahrgang, den nicht jeder sehen darf.
+herunter).
+
+**Dazu die Jahresfreischaltung je Konto** (Phase 6). Der frühere Satz an dieser Stelle –
+feiner werde es nicht, es gebe keinen Jahrgang, den nicht jeder sehen dürfe – galt für
+den Haushalt und nicht für Gäste. Für den Kalender bekommt jemand von außen Zugriff auf
+genau den Jahrgang, aus dem der Kalender entsteht, und auf keinen anderen. `NULL` ist
+die Vorgabe und heißt: alle Jahre, auch künftige. Ein Verwalter ist nie eingeschränkt.
+Rolle, Rechte und Jahrgänge sind drei getrennte Achsen.
 
 Auf der Anmeldeseite steht nicht, worum es geht. Hinter dem Tunnel ist sie öffentlich
 erreichbar.
@@ -195,7 +202,8 @@ zweistufig, mit 30 Tagen Frist. Bilder in einer Auswahlliste bleiben verschont.
 | 3a/3b | Auswahllisten, Herunterladen, Aufräumen | fertig |
 | 4 | Verarbeitung aus der Oberfläche anstoßen | fertig |
 | 5 | Karte | fertig |
-| 6 | Cloudflare Tunnel | offen |
+| 6 | Jahresfreischaltung je Benutzer | fertig |
+| 7 | Cloudflare Tunnel | offen |
 
 ---
 

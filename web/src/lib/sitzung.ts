@@ -31,6 +31,12 @@ export interface Angemeldet {
   rolle: Rolle;
   /** Einzelne Rechte zusaetzlich zur Rolle. Ein Verwalter darf ohnehin alles. */
   rechte: string[];
+  /**
+   * Freigeschaltete Jahrgaenge. `null` heisst alle, auch kuenftige – das ist
+   * die Vorgabe. Durchgesetzt wird es ueber `sichtVon()` in `sichtbar.ts`,
+   * das bei einem Verwalter ohnehin `null` daraus macht.
+   */
+  jahre: number[] | null;
   sitzungId: number;
 }
 
@@ -84,6 +90,7 @@ export async function angemeldet(): Promise<Angemeldet | null> {
     benutzername: string;
     rolle: Rolle;
     rechte: string[] | null;
+    jahre: number[] | null;
     nachfuehren: boolean;
   }>(
     `SELECT s.id::int  AS sitzung_id,
@@ -91,6 +98,7 @@ export async function angemeldet(): Promise<Angemeldet | null> {
             b.benutzername,
             b.rolle,
             b.rechte,
+            b.jahre,
             (s.zuletzt_gesehen < now() - $2::interval) AS nachfuehren
        FROM sitzung s
        JOIN benutzer b ON b.id = s.benutzer_id
@@ -120,6 +128,10 @@ export async function angemeldet(): Promise<Angemeldet | null> {
     // dem Cookie: ein entzogenes Recht wirkt sofort, so wie ein
     // abgeschaltetes Konto.
     rechte: zeile.rechte ?? [],
+    // Dasselbe fuer die Jahrgaenge: eine Freischaltung wirkt beim naechsten
+    // Seitenaufruf, ohne dass jemand sich neu anmelden muss. NULL bleibt NULL
+    // (alle Jahre) – hier darf kein `?? []` stehen, das waere "keines".
+    jahre: zeile.jahre === null ? null : zeile.jahre.map(Number),
   };
 }
 

@@ -17,12 +17,14 @@ import {
  * Browser genauso aus wie ein Verweis.
  */
 export default function Paketformular({
-  zeilen, listeId, ids, was,
+  zeilen, listeId, ids, was, fehlend = 0,
 }: {
   zeilen: Groessenzeile[];
   listeId?: number;
   ids?: number[];
   was: string;
+  /** Wie viele wegen eines gesperrten Jahrgangs NICHT dabei sind. */
+  fehlend?: number;
 }) {
   const anzahl = zeilen.length;
   const teile = Math.ceil(anzahl / HOECHSTENS_JE_PAKET);
@@ -38,9 +40,22 @@ export default function Paketformular({
     <div className="paket">
       <h2>Herunterladen</h2>
       <p>
+        {/*
+          Die Zahl vor dem Herunterladen ist die der VERFUEGBAREN Bilder, und
+          der Unterschied steht dabei. Wer 55 in der Liste sieht und 43 im
+          Paket bekommt, soll den Grund hier lesen und nicht spaeter zaehlen.
+        */}
         <strong>{anzahl}</strong> {was} – als JPEG rund{" "}
         <strong>{groessentext(jpeg)}</strong>, als Original rund{" "}
         <strong>{groessentext(original)}</strong>.
+        {fehlend > 0 ? (
+          <>
+            {" "}
+            <strong>{fehlend} weitere</strong> {fehlend === 1 ? "steht" : "stehen"} in der
+            Liste, {fehlend === 1 ? "ist" : "sind"} aber derzeit nicht freigeschaltet und
+            {fehlend === 1 ? " kommt" : " kommen"} nicht mit ins Paket.
+          </>
+        ) : null}
       </p>
 
       {teile > 1 ? (

@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { abfrage, eineZeile } from "./db";
 import { ABGELEITET, DATEN } from "./dateien";
-import { NICHT_GELOESCHT } from "./sichtbar";
+import { eingeschraenkt, sichtbar, type Sicht } from "./sichtbar";
 
 export interface Ueberblick {
   gesamt: number;
@@ -18,10 +18,19 @@ export interface Ueberblick {
   mitOrt: number;
   ohneExifZeit: number;
   originalBytes: number;
-  abgeleitetBytes: number;
-  platteGesamt: number;
-  platteFrei: number;
+  /**
+   * Groesse der Ableitungen und Plattenbelegung – `null`, sobald jemand auf
+   * einzelne Jahrgaenge eingeschraenkt ist. Diese Zahlen lassen sich nicht je
+   * Jahr trennen: sie zaehlen Dateien auf der Platte, nicht Zeilen. Sie
+   * unveraendert anzuzeigen hiesse, den Umfang des ganzen Bestands zu
+   * verraten – auch den der gesperrten Jahrgaenge.
+   */
+  abgeleitetBytes: number | null;
+  platteGesamt: number | null;
+  platteFrei: number | null;
   wiedergabeErzeugt: number;
+  /** Sagt der Anzeige, dass die Zahlen nicht den ganzen Bestand meinen. */
+  jahreEingeschraenkt: boolean;
 }
 
 // Der Durchlauf ueber abgeleitet/ kostet bei 1.844 Dateien nichts, bei 28.000
@@ -78,17 +87,22 @@ async function abgeleitetGroesse(): Promise<number> {
   return bytes;
 }
 
-export async function ueberblick(): Promise<Ueberblick> {
+export async function ueberblick(sicht: Sicht): Promise<Ueberblick> {
+  const s = sichtbar(sicht);
+  const knapp = eingeschraenkt(sicht);
+
   const [jahre, herkuenfte, summen, platte, abgeleitet] = await Promise.all([
     abfrage<{ jahr: number; anzahl: string; bilder: string; videos: string }>(
       `SELECT jahr, count(*) AS anzahl,
               count(*) FILTER (WHERE typ = 'bild')  AS bilder,
               count(*) FILTER (WHERE typ = 'video') AS videos
-         FROM bild WHERE ${NICHT_GELOESCHT} GROUP BY jahr ORDER BY jahr DESC`,
+         FROM bild WHERE ${s.text} GROUP BY jahr ORDER BY jahr DESC`,
+      s.werte,
     ),
     abfrage<{ herkunft: string; anzahl: string }>(
-      `SELECT herkunft, count(*) AS anzahl FROM bild WHERE ${NICHT_GELOESCHT}
+      `SELECT herkunft, count(*) AS anzahl FROM bild WHERE ${s.text}
         GROUP BY herkunft ORDER BY count(*) DESC`,
+      s.werte,
     ),
     eineZeile<{
       gesamt: string; bilder: string; videos: string; mit_ort: string;
@@ -101,10 +115,11 @@ export async function ueberblick(): Promise<Ueberblick> {
               count(*) FILTER (WHERE zeitquelle <> 'exif')    AS ohne_exif_zeit,
               coalesce(sum(dateigroesse), 0)                  AS original_bytes,
               count(*) FILTER (WHERE wiedergabe_erzeugt)      AS wiedergabe
-         FROM bild WHERE ${NICHT_GELOESCHT}`,
+         FROM bild WHERE ${s.text}`,
+      s.werte,
     ),
-    statfs(DATEN),
-    abgeleitetGroesse(),
+    knapp ? null : statfs(DATEN),
+    knapp ? null : abgeleitetGroesse(),
   ]);
 
   return {
@@ -120,9 +135,10 @@ export async function ueberblick(): Promise<Ueberblick> {
     ohneExifZeit: Number(summen?.ohne_exif_zeit ?? 0),
     originalBytes: Number(summen?.original_bytes ?? 0),
     abgeleitetBytes: abgeleitet,
-    platteGesamt: platte.blocks * platte.bsize,
-    platteFrei: platte.bavail * platte.bsize,
+    platteGesamt: platte ? platte.blocks * platte.bsize : null,
+    platteFrei: platte ? platte.bavail * platte.bsize : null,
     wiedergabeErzeugt: Number(summen?.wiedergabe ?? 0),
+    jahreEingeschraenkt: knapp,
   };
 }
 

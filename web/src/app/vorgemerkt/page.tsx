@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { vorgemerkte } from "@/lib/loeschen";
 import { LOESCHFRIST_TAGE } from "@/lib/rechte";
+import { sichtVon } from "@/lib/sichtbar";
 import { verlangeRecht } from "@/lib/zugriff";
 import Kopf from "../kopf";
 import { zurueckholenAktion } from "./aktionen";
@@ -19,7 +20,7 @@ export default async function Vorgemerkt() {
   // Die Pruefung steht IN der Seite. Ein ausgeblendeter Menuepunkt ist keine
   // Pruefung – ein altes Lesezeichen kaeme sonst durch.
   const wer = await verlangeRecht("loeschen");
-  const zeilen = await vorgemerkte();
+  const zeilen = await vorgemerkte(sichtVon(wer));
 
   const alleIds = zeilen.filter((z) => !z.dateien_weg).map((z) => z.id).join(",");
 

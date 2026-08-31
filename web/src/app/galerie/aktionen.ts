@@ -6,6 +6,7 @@ import { anlegen, bilderHinzufuegen } from "@/lib/listen";
 import { vormerkenSammel } from "@/lib/loeschen";
 import { idsAusFeld, pruefeVollstaendig } from "@/lib/markierung";
 import { LOESCHFRIST_TAGE } from "@/lib/rechte";
+import { sichtVon } from "@/lib/sichtbar";
 import { aktionAngemeldet, aktionRecht } from "@/lib/zugriff";
 
 export interface Zustand {
@@ -41,7 +42,7 @@ export async function inListeLegen(_v: Zustand, formular: FormData): Promise<Zus
   }
 
   // bilderHinzufuegen prueft den Besitzer noch einmal, in der Abfrage.
-  const ergebnis = await bilderHinzufuegen(listeId, wer.benutzerId, ids);
+  const ergebnis = await bilderHinzufuegen(listeId, wer.benutzerId, ids, sichtVon(wer));
   if (!ergebnis.ok) return { fehler: ergebnis.fehler };
 
   revalidatePath("/listen");
@@ -62,13 +63,13 @@ export async function inListeLegen(_v: Zustand, formular: FormData): Promise<Zus
 export async function sammelVormerken(_v: Zustand, formular: FormData): Promise<Zustand> {
   // Die Pruefung steht HIER, nicht nur im Menue: eine Server Action ist eine
   // Adresse wie jede andere und laesst sich direkt ansprechen.
-  await aktionRecht("loeschen");
+  const wer = await aktionRecht("loeschen");
 
   const ids = idsAusFeld(String(formular.get("ids") ?? ""));
   const beanstandung = pruefeVollstaendig(ids, Number(formular.get("anzahl")));
   if (beanstandung) return { fehler: beanstandung };
 
-  const bericht = await vormerkenSammel(ids);
+  const bericht = await vormerkenSammel(ids, sichtVon(wer));
 
   revalidatePath("/galerie");
   revalidatePath("/vorgemerkt");

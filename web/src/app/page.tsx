@@ -2,14 +2,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { gb, ueberblick, zahl } from "@/lib/bestand";
+import { sichtVon } from "@/lib/sichtbar";
 import { darf, verlangeAnmeldung } from "@/lib/zugriff";
+import KeinJahr from "./keinjahr";
 import Kopf from "./kopf";
 
 export const metadata: Metadata = { title: "Übersicht" };
 
 export default async function Uebersicht() {
   const wer = await verlangeAnmeldung();
-  const b = await ueberblick();
+  const b = await ueberblick(sichtVon(wer));
 
   const anteil = (n: number) => (b.gesamt ? `${zahl((100 * n) / b.gesamt, 1)} %` : "–");
 
@@ -18,12 +20,15 @@ export default async function Uebersicht() {
       <Kopf wer={wer} />
       <h1>Übersicht</h1>
 
+      {b.gesamt === 0 && b.jahreEingeschraenkt ? <KeinJahr /> : null}
+
       <div className="karte">
         <p>
-          Im Archiv liegen <strong>{zahl(b.gesamt)}</strong> Aufnahmen:{" "}
-          {zahl(b.bilder)} Bilder und {zahl(b.videos)} Videos, zusammen{" "}
-          {gb(b.originalBytes)} an Originalen und {gb(b.abgeleitetBytes)} an
-          Ableitungen. {zahl(b.mitOrt)} davon tragen eine brauchbare Koordinate.
+          {b.jahreEingeschraenkt ? "Für dich freigeschaltet sind " : "Im Archiv liegen "}
+          <strong>{zahl(b.gesamt)}</strong> Aufnahmen: {zahl(b.bilder)} Bilder und{" "}
+          {zahl(b.videos)} Videos, zusammen {gb(b.originalBytes)} an Originalen
+          {b.abgeleitetBytes !== null ? ` und ${gb(b.abgeleitetBytes)} an Ableitungen` : ""}.{" "}
+          {zahl(b.mitOrt)} davon tragen eine brauchbare Koordinate.
         </p>
         <p className="leise">
           Bei {zahl(b.ohneExifZeit)} Aufnahmen ({anteil(b.ohneExifZeit)}) ist der
@@ -96,11 +101,20 @@ export default async function Uebersicht() {
       </table>
       </div>
 
-      <h2>Platte</h2>
-      <p className="leise">
-        {gb(b.platteGesamt - b.platteFrei)} von {gb(b.platteGesamt)} belegt,{" "}
-        {gb(b.platteFrei)} frei auf <code>/data/kajoe_bilder</code>.
-      </p>
+      {/*
+        Plattenzahlen nur ohne Jahreseinschraenkung: sie zaehlen Dateien und
+        lassen sich nicht je Jahrgang trennen. Wer nur 2025 sehen darf, laese
+        hier sonst den Umfang des ganzen Bestands ab.
+      */}
+      {b.platteGesamt !== null && b.platteFrei !== null ? (
+        <>
+          <h2>Platte</h2>
+          <p className="leise">
+            {gb(b.platteGesamt - b.platteFrei)} von {gb(b.platteGesamt)} belegt,{" "}
+            {gb(b.platteFrei)} frei auf <code>/data/kajoe_bilder</code>.
+          </p>
+        </>
+      ) : null}
     </main>
   );
 }

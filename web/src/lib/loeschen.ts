@@ -19,7 +19,7 @@ import "server-only";
 import { abfrage } from "./db";
 import { inListen } from "./listen";
 import { LOESCHFRIST_TAGE } from "./rechte";
-import { NICHT_GELOESCHT, VORGEMERKT } from "./sichtbar";
+import { sichtbar, vorgemerktSichtbar, type Sicht } from "./sichtbar";
 
 export interface Vormerkbericht {
   vorgemerkt: number;
@@ -34,18 +34,22 @@ export interface Vormerkbericht {
  * mitnehmen – und "stillschweigend" ist hier das Wort: deshalb kommt zurueck,
  * welche uebersprungen wurden, und nicht nur wie viele.
  */
-export async function vormerkenSammel(ids: number[]): Promise<Vormerkbericht> {
+export async function vormerkenSammel(ids: number[], sicht: Sicht): Promise<Vormerkbericht> {
   if (!ids.length) return { vorgemerkt: 0, wegenListe: [], schonWeg: 0 };
 
   const geschuetzt = await inListen(ids);
   const zuTun = ids.filter((id) => !geschuetzt.has(id));
 
+  // Was jemand nicht sehen darf, darf er auch nicht loeschen. Die Bedingung
+  // steht IN der Abfrage – eine Kennung aus einem gesperrten Jahrgang laesst
+  // sich in ein Formular schreiben, in die Abfrage nicht.
+  const s = sichtbar(sicht, { ab: 2 });
   const zeilen = zuTun.length
     ? await abfrage<{ id: number }>(
         `UPDATE bild SET geloescht_am = now()
-          WHERE id = ANY($1::bigint[]) AND ${NICHT_GELOESCHT}
+          WHERE id = ANY($1::bigint[]) AND ${s.text}
           RETURNING id::int AS id`,
-        [zuTun],
+        [zuTun, ...s.werte],
       )
     : [];
 
@@ -61,22 +65,24 @@ export async function vormerkenSammel(ids: number[]): Promise<Vormerkbericht> {
  * Person hat es vor sich und entscheidet. Der Hinweis, in wie vielen Listen es
  * steht, gehoert in die Anzeige davor.
  */
-export async function vormerkenEinzeln(id: number): Promise<boolean> {
+export async function vormerkenEinzeln(id: number, sicht: Sicht): Promise<boolean> {
+  const s = sichtbar(sicht, { ab: 2 });
   const zeilen = await abfrage(
-    `UPDATE bild SET geloescht_am = now() WHERE id = $1 AND ${NICHT_GELOESCHT} RETURNING id`,
-    [id],
+    `UPDATE bild SET geloescht_am = now() WHERE id = $1 AND ${s.text} RETURNING id`,
+    [id, ...s.werte],
   );
   return zeilen.length > 0;
 }
 
 /** Zurueckholen, solange die Frist laeuft. */
-export async function zurueckholen(ids: number[]): Promise<number> {
+export async function zurueckholen(ids: number[], sicht: Sicht): Promise<number> {
   if (!ids.length) return 0;
+  const s = vorgemerktSichtbar(sicht, { ab: 2 });
   const zeilen = await abfrage(
     `UPDATE bild SET geloescht_am = NULL
-      WHERE id = ANY($1::bigint[]) AND ${VORGEMERKT}
+      WHERE id = ANY($1::bigint[]) AND ${s.text}
       RETURNING id`,
-    [ids],
+    [ids, ...s.werte],
   );
   return zeilen.length;
 }
@@ -93,15 +99,16 @@ export interface Vorgemerkt {
   dateien_weg: boolean;
 }
 
-export async function vorgemerkte(): Promise<Vorgemerkt[]> {
+export async function vorgemerkte(sicht: Sicht): Promise<Vorgemerkt[]> {
+  const s = vorgemerktSichtbar(sicht, { ab: 2 });
   const zeilen = await abfrage<Vorgemerkt & { resttage: string }>(
     `SELECT id::int AS id, sha256, typ, jahr, monat, aufnahme_lokal, geloescht_am,
             ceil(extract(epoch FROM (geloescht_am + $1 * interval '1 day' - now())) / 86400)
               AS resttage,
             NOT vorschau_erzeugt AS dateien_weg
-       FROM bild WHERE ${VORGEMERKT}
+       FROM bild WHERE ${s.text}
       ORDER BY geloescht_am DESC, id DESC`,
-    [LOESCHFRIST_TAGE],
+    [LOESCHFRIST_TAGE, ...s.werte],
   );
   return zeilen.map((z) => ({ ...z, resttage: Number(z.resttage) }));
 }

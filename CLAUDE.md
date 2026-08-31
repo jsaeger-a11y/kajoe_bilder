@@ -52,7 +52,8 @@ Ports werden hier eingetragen, bevor sie belegt werden.
 | 3a/3b | Auswahllisten, Herunterladen, Aufräumen | **fertig** |
 | 4 | Verarbeitung aus der Oberfläche anstoßen | **fertig** |
 | 5 | Karte (GPS) | **fertig** |
-| 6 | Cloudflare Tunnel | offen |
+| 6 | Jahresfreischaltung je Benutzer | **fertig** |
+| 7 | Cloudflare Tunnel | offen |
 
 Die Nummern folgen den Auftragsdateien in `docs/`. Gegenüber der ursprünglichen
 Planung ist eine Phase dazugekommen – das Anstoßen der Verarbeitung aus der
@@ -353,6 +354,28 @@ altes Lesezeichen käme sonst durch.
 **Benutzer werden abgeschaltet, nicht gelöscht** (`aktiv`), sonst verwaisen ihre
 Listen.
 
+**Dazu die Jahresfreischaltung** (`benutzer.jahre`, Migration 006) – eine dritte,
+von Rolle und Rechten unabhängige Achse. Anlass: für den Kalender bekommt jemand von
+außen Zugriff auf genau den Jahrgang, aus dem der Kalender entsteht. `NULL` ist die
+Vorgabe und heißt **alle Jahre, auch künftige**; eine Liste heißt genau diese Jahre,
+eine leere Liste keines. Ein **Verwalter ist nie eingeschränkt**, unabhängig vom Feld.
+
+**Der Unterschied zwischen `NULL` und einer Liste aller heutigen Jahre ist der ganze
+Punkt.** Bei `NULL` erscheint 2027 von selbst, sobald die ersten Bilder daraus
+eingelesen sind. Müsste jemand eine Liste nachführen, stünde im Januar der ganze
+Haushalt ohne den neuen Jahrgang da – und es fiele erst auf, wenn jemand sein Bild
+sucht. Bestehende Konten haben deshalb `NULL` bekommen, nicht die heutigen Jahre.
+
+Durchgesetzt wird das in `web/src/lib/sichtbar.ts`, an **einer** Stelle, zusammen mit
+`geloescht_am IS NULL`. Der wichtigste Ort ist nicht die Galerie, sondern
+`/datei/…`: dort gehen die Bilder über die Leitung, und eine geratene Kennung darf
+kein Vorschaubild aus einem gesperrten Jahrgang liefern.
+
+**In einer Auswahlliste bleiben gesperrte Bilder stehen** und kommen nach der
+Freischaltung wieder. Die Liste sagt aber, wie viele fehlen – „55 Bilder, davon 12
+derzeit nicht verfügbar". Still weglassen wäre das Schlimmste: man lädt ein Paket
+herunter und baut einen Kalender mit Lücken, ohne zu wissen, dass welche fehlen.
+
 **Auf der Anmeldeseite steht nicht, worum es geht.** Hinter dem Tunnel ist sie
 öffentlich erreichbar – keine Namen, keine Familie, keine Fotos, weder im Text noch im
 Titel noch in den Metaangaben, auch nicht im Wurzel-Layout, dessen Titel dort
@@ -437,6 +460,13 @@ Täglicher `pg_dump` ab Phase 0, nicht später.
   der Dump 1,5 MB überschritt – die Prüfung „enthält die Tabelle `bild`" meldete Nein,
   während die Tabelle drin war. Stattdessen einmal in eine Variable lesen und mit
   `grep … <<< "$VAR"` prüfen
+- **Eine Bedingung, die überall gelten muss, wird nicht als Konstante exportiert.**
+  Solange `NICHT_GELOESCHT` als Zeichenkette frei herumlag, konnte jede neue Abfrage
+  sie einsetzen und die Jahresfreischaltung daneben vergessen – und das fällt genau
+  dort nicht auf, wo man nicht hinsieht. Der Export ist deshalb weg; es gibt nur noch
+  `sichtbar(sicht)`, und das verlangt ein Argument, das nur hat, wer weiß, für wen die
+  Abfrage läuft. Beim Umbau hat der Übersetzer die zwanzig Stellen selbst aufgezählt,
+  statt dass jemand sie suchen musste
 - **Ein Gitter aus gleichen Gradzahlen ist auf dem Bildschirm kein Quadrat.**
   Bei 54 Grad Nord deckt ein Breitengrad rund anderthalbmal so viele Bildpunkte
   ab wie ein Längengrad. Wer Kartenpunkte über `floor(lat/zelle)` und

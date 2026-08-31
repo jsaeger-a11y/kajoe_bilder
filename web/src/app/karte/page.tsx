@@ -3,9 +3,11 @@ import Link from "next/link";
 
 import { filterAusSuche, suchtext, trefferzahlen, zeitraeume } from "@/lib/galerie";
 import { ZOOM_MAX, ZOOM_MIN, mitteAusSuche, ortszahlen, startbereich } from "@/lib/karte";
+import { sichtVon } from "@/lib/sichtbar";
 import { verlangeRecht } from "@/lib/zugriff";
 import Filterleiste from "../galerie/filterleiste";
 import Kopf from "../kopf";
+import KeinJahr from "../keinjahr";
 import Ausschnittverweise from "./ausschnittverweise";
 import Kartenfeld from "./kartenfeld";
 
@@ -27,11 +29,12 @@ export default async function Karte({
   // der Galerie sich in die Kartenadressen und in die Verweise zurueck.
   const filter = { ...filterAusSuche(suche), ort: "alle", seite: 1 };
 
+  const sicht = sichtVon(wer);
   const [zahlen, raeume, orte, bereich] = await Promise.all([
-    trefferzahlen(filter),
-    zeitraeume(filter),
-    ortszahlen(filter),
-    startbereich(filter),
+    trefferzahlen(filter, sicht),
+    zeitraeume(filter, sicht),
+    ortszahlen(filter, sicht),
+    startbereich(filter, sicht),
   ]);
 
   // Genau der Teil der Adresse, den die Karte an ihre Abfragen anhaengt:
@@ -62,6 +65,8 @@ export default async function Karte({
           />
         </details>
       </Ausschnittverweise>
+
+      {sicht.jahre?.length === 0 ? <KeinJahr /> : null}
 
       <Kartenfeld
         filterabfrage={filterabfrage}

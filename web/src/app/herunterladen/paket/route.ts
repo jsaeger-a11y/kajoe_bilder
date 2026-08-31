@@ -18,7 +18,7 @@ import {
 } from "@/lib/herunterladen";
 import { bilderDerListe, listeZumSehen } from "@/lib/listen";
 import { idsAusFeld } from "@/lib/markierung";
-import { NICHT_GELOESCHT } from "@/lib/sichtbar";
+import { sichtVon, sichtbar } from "@/lib/sichtbar";
 import { angemeldet } from "@/lib/sitzung";
 
 export async function POST(anfrage: Request): Promise<Response> {
@@ -40,10 +40,13 @@ export async function POST(anfrage: Request): Promise<Response> {
     // sehen und herunterladen gehoeren zusammen, geaendert wird sie dadurch
     // nicht. Aus einer nicht freigegebenen nicht: listeZumSehen() prueft das
     // in der Abfrage, mit der Kennung aus der Sitzung.
-    const liste = await listeZumSehen(listenNummer, wer.benutzerId);
+    const liste = await listeZumSehen(listenNummer, wer.benutzerId, sichtVon(wer));
     if (!liste) return new Response("nicht gefunden", { status: 404 });
 
-    const bilder = await bilderDerListe(listenNummer);
+    // Nur die verfuegbaren – ein gesperrter Jahrgang faellt hier heraus, genau
+    // wie in der Anzeige der Liste. Die Zahl, die dort steht, ist deshalb auch
+    // die Zahl im Paket.
+    const bilder = await bilderDerListe(listenNummer, sichtVon(wer));
     ids = bilder.map((b) => b.id);
     ordner = sauberer(liste.name);
     dateiname = `${sauberer(liste.name)}.zip`;
@@ -52,10 +55,11 @@ export async function POST(anfrage: Request): Promise<Response> {
     if (!ids.length) return new Response("nichts ausgewählt", { status: 400 });
 
     // Was aus der Sammelauswahl kommt, ist ungeprueft: nur Zeilen nehmen, die
-    // es gibt und die nicht vorgemerkt sind.
+    // es gibt, die nicht vorgemerkt sind und die diese Person sehen darf.
+    const s = sichtbar(sichtVon(wer), { ab: 2 });
     const vorhanden = await abfrage<{ id: number }>(
-      `SELECT id::int AS id FROM bild WHERE id = ANY($1::bigint[]) AND ${NICHT_GELOESCHT}`,
-      [ids],
+      `SELECT id::int AS id FROM bild WHERE id = ANY($1::bigint[]) AND ${s.text}`,
+      [ids, ...s.werte],
     );
     const erlaubt = new Set(vorhanden.map((z) => Number(z.id)));
     ids = ids.filter((i) => erlaubt.has(i));

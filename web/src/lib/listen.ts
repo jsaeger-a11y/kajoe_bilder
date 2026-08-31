@@ -16,7 +16,7 @@ import "server-only";
 
 import { abfrage, eineZeile } from "./db";
 import { HOECHSTENS_JE_LISTE, HOECHSTENS_LISTEN } from "./rechte";
-import { NICHT_GELOESCHT } from "./sichtbar";
+import { nurJahre, sichtbar, type Sicht } from "./sichtbar";
 
 export interface Liste {
   id: number;
@@ -26,10 +26,28 @@ export interface Liste {
   freigegeben: boolean;
   angelegt_am: Date;
   geaendert_am: Date;
+  /** Alles, was in der Liste steht und nicht zum Loeschen vorgemerkt ist. */
   anzahl: number;
+  /** Davon das, was diese Person gerade sehen darf. */
+  verfuegbar: number;
 }
 
-const AUSWAHL_FELDER = `
+/**
+ * Die Felder einer Liste, samt beider Zahlen.
+ *
+ * **Die Bilder bleiben in der Liste, auch wenn ihr Jahrgang gesperrt ist.**
+ * Nichts wird entfernt; nach einer Freischaltung sind sie wieder da. Deshalb
+ * stehen hier zwei Zahlen: `anzahl` ist alles, `verfuegbar` das, was diese
+ * Person davon sehen darf. Nur die zweite zu zeigen waere das Schlimmste –
+ * man laedt ein Paket herunter und baut einen Kalender mit Luecken, ohne zu
+ * wissen, dass welche fehlen.
+ *
+ * `ab` ist die Nummer des ersten freien Platzhalters.
+ */
+function auswahlFelder(sicht: Sicht, ab: number): { text: string; werte: unknown[] } {
+  const j = nurJahre(sicht, { ab, praefix: "bi." });
+  return {
+    text: `
   a.id::int          AS id,
   a.besitzer_id::int AS besitzer_id,
   b.benutzername     AS besitzer,
@@ -39,7 +57,13 @@ const AUSWAHL_FELDER = `
   a.geaendert_am,
   (SELECT count(*) FROM auswahl_bild ab
      JOIN bild bi ON bi.id = ab.bild_id
-    WHERE ab.auswahl_id = a.id AND bi.${NICHT_GELOESCHT}) AS anzahl`;
+    WHERE ab.auswahl_id = a.id AND bi.geloescht_am IS NULL) AS anzahl,
+  (SELECT count(*) FROM auswahl_bild ab
+     JOIN bild bi ON bi.id = ab.bild_id
+    WHERE ab.auswahl_id = a.id AND bi.geloescht_am IS NULL AND ${j.text}) AS verfuegbar`,
+    werte: j.werte,
+  };
+}
 
 function zu(zeile: Record<string, unknown>): Liste {
   return {
@@ -51,33 +75,39 @@ function zu(zeile: Record<string, unknown>): Liste {
     angelegt_am: zeile.angelegt_am as Date,
     geaendert_am: zeile.geaendert_am as Date,
     anzahl: Number(zeile.anzahl),
+    verfuegbar: Number(zeile.verfuegbar),
   };
 }
 
-export async function eigeneListen(benutzerId: number): Promise<Liste[]> {
+export async function eigeneListen(benutzerId: number, sicht: Sicht): Promise<Liste[]> {
+  const f = auswahlFelder(sicht, 2);
   const zeilen = await abfrage(
-    `SELECT ${AUSWAHL_FELDER} FROM auswahl a JOIN benutzer b ON b.id = a.besitzer_id
+    `SELECT ${f.text} FROM auswahl a JOIN benutzer b ON b.id = a.besitzer_id
       WHERE a.besitzer_id = $1 ORDER BY a.geaendert_am DESC`,
-    [benutzerId],
+    [benutzerId, ...f.werte],
   );
   return zeilen.map(zu);
 }
 
-export async function freigegebeneListen(benutzerId: number): Promise<Liste[]> {
+export async function freigegebeneListen(benutzerId: number, sicht: Sicht): Promise<Liste[]> {
+  const f = auswahlFelder(sicht, 2);
   const zeilen = await abfrage(
-    `SELECT ${AUSWAHL_FELDER} FROM auswahl a JOIN benutzer b ON b.id = a.besitzer_id
+    `SELECT ${f.text} FROM auswahl a JOIN benutzer b ON b.id = a.besitzer_id
       WHERE a.freigegeben AND a.besitzer_id <> $1 ORDER BY b.benutzername, a.name`,
-    [benutzerId],
+    [benutzerId, ...f.werte],
   );
   return zeilen.map(zu);
 }
 
 /** Eigene Liste ODER eine freigegebene fremde. Zum Ansehen. */
-export async function listeZumSehen(id: number, benutzerId: number): Promise<Liste | null> {
+export async function listeZumSehen(
+  id: number, benutzerId: number, sicht: Sicht,
+): Promise<Liste | null> {
+  const f = auswahlFelder(sicht, 3);
   const zeile = await eineZeile(
-    `SELECT ${AUSWAHL_FELDER} FROM auswahl a JOIN benutzer b ON b.id = a.besitzer_id
+    `SELECT ${f.text} FROM auswahl a JOIN benutzer b ON b.id = a.besitzer_id
       WHERE a.id = $1 AND (a.besitzer_id = $2 OR a.freigegeben)`,
-    [id, benutzerId],
+    [id, benutzerId, ...f.werte],
   );
   return zeile ? zu(zeile) : null;
 }
@@ -88,11 +118,14 @@ export async function listeZumSehen(id: number, benutzerId: number): Promise<Lis
  * Die Besitzerpruefung steht IN der Abfrage. Dass die Seite davor nur eigene
  * Listen zeigt, ist keine Pruefung.
  */
-export async function listeZumAendern(id: number, benutzerId: number): Promise<Liste | null> {
+export async function listeZumAendern(
+  id: number, benutzerId: number, sicht: Sicht,
+): Promise<Liste | null> {
+  const f = auswahlFelder(sicht, 3);
   const zeile = await eineZeile(
-    `SELECT ${AUSWAHL_FELDER} FROM auswahl a JOIN benutzer b ON b.id = a.besitzer_id
+    `SELECT ${f.text} FROM auswahl a JOIN benutzer b ON b.id = a.besitzer_id
       WHERE a.id = $1 AND a.besitzer_id = $2`,
-    [id, benutzerId],
+    [id, benutzerId, ...f.werte],
   );
   return zeile ? zu(zeile) : null;
 }
@@ -173,9 +206,9 @@ export async function freigabeSetzen(
  * einer, den jemand vergisst, waere eine verlorene Sitzung.
  */
 export async function bilderHinzufuegen(
-  listeId: number, benutzerId: number, ids: number[],
+  listeId: number, benutzerId: number, ids: number[], sicht: Sicht,
 ): Promise<{ ok: true; neu: number; schon: number } | { ok: false; fehler: string }> {
-  const liste = await listeZumAendern(listeId, benutzerId);
+  const liste = await listeZumAendern(listeId, benutzerId, sicht);
   if (!liste) return { ok: false, fehler: "Diese Liste gibt es nicht oder sie gehört dir nicht." };
   if (!ids.length) return { ok: false, fehler: "Es ist nichts ausgewählt." };
 
@@ -188,22 +221,24 @@ export async function bilderHinzufuegen(
     };
   }
 
-  // Nur Bilder, die es gibt und die nicht vorgemerkt sind.
+  // Nur Bilder, die es gibt, die nicht vorgemerkt sind und die diese Person
+  // ueberhaupt sehen darf. Was jemand nicht sieht, kann er auch nicht sammeln.
+  const s = sichtbar(sicht, { ab: 3, praefix: "b." });
   const zeilen = await abfrage<{ id: number }>(
     `INSERT INTO auswahl_bild (auswahl_id, bild_id)
-     SELECT $1, b.id FROM bild b WHERE b.id = ANY($2::bigint[]) AND b.${NICHT_GELOESCHT}
+     SELECT $1, b.id FROM bild b WHERE b.id = ANY($2::bigint[]) AND ${s.text}
      ON CONFLICT DO NOTHING
      RETURNING bild_id::int AS id`,
-    [listeId, ids],
+    [listeId, ids, ...s.werte],
   );
   await abfrage(`UPDATE auswahl SET geaendert_am = now() WHERE id = $1`, [listeId]);
   return { ok: true, neu: zeilen.length, schon: ids.length - zeilen.length };
 }
 
 export async function bilderEntfernen(
-  listeId: number, benutzerId: number, ids: number[],
+  listeId: number, benutzerId: number, ids: number[], sicht: Sicht,
 ): Promise<{ ok: true; entfernt: number } | { ok: false; fehler: string }> {
-  const liste = await listeZumAendern(listeId, benutzerId);
+  const liste = await listeZumAendern(listeId, benutzerId, sicht);
   if (!liste) return { ok: false, fehler: "Diese Liste gibt es nicht oder sie gehört dir nicht." };
   if (!ids.length) return { ok: false, fehler: "Es ist nichts ausgewählt." };
 
@@ -232,21 +267,24 @@ export interface Listenbild {
 }
 
 /**
- * Die Bilder einer Liste – ohne die vorgemerkten.
+ * Die Bilder einer Liste – ohne die vorgemerkten, ohne gesperrte Jahrgaenge.
  *
  * Ein vorgemerkt geloeschtes Bild bleibt in `auswahl_bild` stehen, faellt aber
  * hier heraus. Damit erscheint es weder in der Ansicht noch im Paket, und wird
- * es zurueckgeholt, ist es wieder da.
+ * es zurueckgeholt, ist es wieder da. Fuer einen gesperrten Jahrgang gilt
+ * dasselbe – wie viele dadurch fehlen, steht in `Liste.anzahl` gegen
+ * `Liste.verfuegbar` und gehoert sichtbar auf die Seite.
  */
-export async function bilderDerListe(listeId: number): Promise<Listenbild[]> {
+export async function bilderDerListe(listeId: number, sicht: Sicht): Promise<Listenbild[]> {
+  const s = sichtbar(sicht, { ab: 2, praefix: "b." });
   return abfrage<Listenbild>(
     `SELECT b.id::int AS id, b.sha256, b.typ, b.dateityp, b.dateigroesse,
             b.breite, b.hoehe, b.aufnahme_lokal, b.jahr, b.monat,
             b.dauer_sekunden, ab.notiz
        FROM auswahl_bild ab JOIN bild b ON b.id = ab.bild_id
-      WHERE ab.auswahl_id = $1 AND b.${NICHT_GELOESCHT}
+      WHERE ab.auswahl_id = $1 AND ${s.text}
       ORDER BY b.aufnahme_lokal DESC, b.id DESC`,
-    [listeId],
+    [listeId, ...s.werte],
   );
 }
 

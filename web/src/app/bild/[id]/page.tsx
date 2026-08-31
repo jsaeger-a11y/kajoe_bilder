@@ -9,7 +9,7 @@ import { karteAusschnitt } from "@/lib/karte";
 import { eigeneListen, inWievielenListen } from "@/lib/listen";
 import { auswahlAusSuche, auswahlteile, istMarkiert, umschalten } from "@/lib/markierung";
 import { LOESCHFRIST_TAGE } from "@/lib/rechte";
-import { NICHT_GELOESCHT } from "@/lib/sichtbar";
+import { sichtVon, sichtbar } from "@/lib/sichtbar";
 import { darf, verlangeAnmeldung } from "@/lib/zugriff";
 import { einzelVormerken } from "../../vorgemerkt/aktionen";
 import Kopf from "../../kopf";
@@ -79,21 +79,25 @@ export default async function Einzelansicht({
   const auswahl = auswahlAusSuche(suche);
   const tun = String(suche.tun ?? "");
 
+  const sicht = sichtVon(wer);
+  const s = sichtbar(sicht, { ab: 2 });
   const b = await eineZeile<Zeile>(
     `SELECT id::int AS id, sha256, dateiname, dateityp, dateigroesse, typ, herkunft,
             geraet_hersteller, geraet_modell, aufnahme_lokal, aufnahme_utc,
             zeitversatz, zeitquelle, breite, hoehe, dauer_sekunden, video_codec,
             hdr, lat, lon, gps_status, wiedergabe_erzeugt, eingelesen_am
-       FROM bild WHERE id = $1 AND ${NICHT_GELOESCHT}`,
-    [nummer],
+       FROM bild WHERE id = $1 AND ${s.text}`,
+    [nummer, ...s.werte],
   );
+  // Vorgemerkt oder gesperrter Jahrgang: beides 404. Ein Lesezeichen auf ein
+  // Bild aus einem Jahr, das inzwischen gesperrt ist, kommt nicht durch.
   if (!b) notFound();
 
   // Geblaettert wird INNERHALB der gefilterten Menge. Sonst springt man aus der
   // Auswahl heraus, in der man gerade sucht.
   const [rundum, listen, inListenAnzahl] = await Promise.all([
-    nachbarn(filter, b.aufnahme_lokal, b.id),
-    eigeneListen(wer.benutzerId),
+    nachbarn(filter, sicht, b.aufnahme_lokal, b.id),
+    eigeneListen(wer.benutzerId, sicht),
     inWievielenListen(b.id),
   ]);
   const zusatz = auswahlteile(auswahl);

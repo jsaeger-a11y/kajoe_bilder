@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { eigeneListen, freigegebeneListen } from "@/lib/listen";
 import { HOECHSTENS_LISTEN } from "@/lib/rechte";
+import { sichtVon } from "@/lib/sichtbar";
 import { verlangeAnmeldung } from "@/lib/zugriff";
 import Kopf from "../kopf";
 import { AnlegenFormular } from "./formulare";
@@ -18,8 +19,8 @@ function zeit(d: Date): string {
 export default async function Listen() {
   const wer = await verlangeAnmeldung();
   const [eigene, fremde] = await Promise.all([
-    eigeneListen(wer.benutzerId),
-    freigegebeneListen(wer.benutzerId),
+    eigeneListen(wer.benutzerId, sichtVon(wer)),
+    freigegebeneListen(wer.benutzerId, sichtVon(wer)),
   ]);
 
   return (
@@ -48,7 +49,15 @@ export default async function Listen() {
               {eigene.map((l) => (
                 <tr key={l.id}>
                   <td><Link href={`/listen/${l.id}`}>{l.name}</Link></td>
-                  <td>{l.anzahl}</td>
+                  <td>
+                    {l.anzahl}
+                    {/* Auch hier die Differenz, nicht nur in der Liste selbst:
+                        wer die Uebersicht liest, soll nicht mit einer Zahl
+                        rechnen, die im Paket kleiner ausfaellt. */}
+                    {l.anzahl > l.verfuegbar ? (
+                      <span className="leise"> ({l.anzahl - l.verfuegbar} gesperrt)</span>
+                    ) : null}
+                  </td>
                   <td>{l.freigegeben ? "ja" : "nein"}</td>
                   <td className="leise">{zeit(l.geaendert_am)}</td>
                 </tr>
@@ -72,7 +81,15 @@ export default async function Listen() {
                 <tr key={l.id}>
                   <td><Link href={`/listen/${l.id}`}>{l.name}</Link></td>
                   <td>{l.besitzer}</td>
-                  <td>{l.anzahl}</td>
+                  <td>
+                    {l.anzahl}
+                    {/* Auch hier die Differenz, nicht nur in der Liste selbst:
+                        wer die Uebersicht liest, soll nicht mit einer Zahl
+                        rechnen, die im Paket kleiner ausfaellt. */}
+                    {l.anzahl > l.verfuegbar ? (
+                      <span className="leise"> ({l.anzahl - l.verfuegbar} gesperrt)</span>
+                    ) : null}
+                  </td>
                   <td className="leise">{zeit(l.geaendert_am)}</td>
                 </tr>
               ))}

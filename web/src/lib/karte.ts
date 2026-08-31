@@ -21,6 +21,7 @@ import "server-only";
 
 import { abfrage, eineZeile } from "./db";
 import { bedingung, suchtext, type Filter } from "./galerie";
+import type { Sicht } from "./sichtbar";
 
 /**
  * Zoomstufen. 2 zeigt die ganze Welt, 19 ist die feinste Stufe, fuer die es
@@ -208,8 +209,8 @@ export function rahmenAusSuche(suche: Suchwerte): Rahmen {
  * vorgemerkte Aufnahme verschwindet damit von der Karte, ohne dass es hier
  * noch einmal jemand hinschreiben muss.
  */
-function kartenbedingung(filter: Filter): { text: string; werte: unknown[] } {
-  const b = bedingung(filter, "ort");
+function kartenbedingung(filter: Filter, sicht: Sicht): { text: string; werte: unknown[] } {
+  const b = bedingung(filter, sicht, "ort");
   return { text: `${b.text} AND gps_status = 'ok'`, werte: [...b.werte] };
 }
 
@@ -248,13 +249,14 @@ function wanntext(d: Date): string {
 
 async function aufnahmenZu(
   filter: Filter,
+  sicht: Sicht,
   /** Bekommt die Nummer des ERSTEN freien Platzhalters – sonst raet der
       Aufrufer, wie viele Werte die Filterbedingung schon belegt hat. */
   zusatz: (ab: number) => string,
   zusatzWerte: unknown[],
   grenze: number,
 ): Promise<Aufnahme[]> {
-  const b = kartenbedingung(filter);
+  const b = kartenbedingung(filter, sicht);
   const werte = [...b.werte, ...zusatzWerte];
   const zeilen = await abfrage<Bildzeile>(
     `SELECT id::int AS id, lat, lon, typ, aufnahme_lokal
@@ -283,10 +285,11 @@ async function aufnahmenZu(
  */
 export async function ausschnitt(
   filter: Filter,
+  sicht: Sicht,
   rahmen: Rahmen,
   zoom: number,
 ): Promise<Ausschnittsantwort> {
-  const b = kartenbedingung(filter);
+  const b = kartenbedingung(filter, sicht);
   const n = b.werte.length;
   const werte = [...b.werte, rahmen.sued, rahmen.nord, rahmen.west, rahmen.ost, zellweite(zoom)];
   const imRahmen =
@@ -322,6 +325,7 @@ export async function ausschnitt(
   if (imAusschnitt > 0 && imAusschnitt <= EINZELN_BIS) {
     const aufnahmen = await aufnahmenZu(
       filter,
+      sicht,
       (ab) => `lat BETWEEN $${ab} AND $${ab + 1} AND lon BETWEEN $${ab + 2} AND $${ab + 3}`,
       [rahmen.sued, rahmen.nord, rahmen.west, rahmen.ost],
       EINZELN_BIS,
@@ -348,7 +352,7 @@ export async function ausschnitt(
   // Eine Gruppe mit genau einer Aufnahme ist keine Gruppe. Die Einzelnen
   // bekommen deshalb ihre Daten nachgereicht und werden wie Aufnahmen gezeigt.
   const aufnahmen = einzelne.length
-    ? await aufnahmenZu(filter, (ab) => `id = ANY($${ab}::bigint[])`, [einzelne], einzelne.length)
+    ? await aufnahmenZu(filter, sicht, (ab) => `id = ANY($${ab}::bigint[])`, [einzelne], einzelne.length)
     : [];
 
   return { zoom, imAusschnitt, gruppen, aufnahmen, abgeschnitten };
@@ -363,8 +367,9 @@ export async function ausschnitt(
  */
 export async function ortszahlen(
   filter: Filter,
+  sicht: Sicht,
 ): Promise<{ mitOrt: number; ohneOrt: number; gesamt: number }> {
-  const b = bedingung(filter, "ort");
+  const b = bedingung(filter, sicht, "ort");
   const zeile = await eineZeile<{ mit: string; ohne: string }>(
     `SELECT count(*) FILTER (WHERE gps_status = 'ok')  AS mit,
             count(*) FILTER (WHERE gps_status <> 'ok') AS ohne
@@ -383,8 +388,8 @@ export async function ortszahlen(
  * sehen ist – statt auf einer festen Mitte, die bei einem Urlaubsfilter neben
  * der Sache laege.
  */
-export async function startbereich(filter: Filter): Promise<Rahmen | null> {
-  const b = kartenbedingung(filter);
+export async function startbereich(filter: Filter, sicht: Sicht): Promise<Rahmen | null> {
+  const b = kartenbedingung(filter, sicht);
   const zeile = await eineZeile<{
     sued: number | null; nord: number | null; west: number | null; ost: number | null;
   }>(

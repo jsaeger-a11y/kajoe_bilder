@@ -13,7 +13,10 @@ export async function GET(): Promise<Response> {
   if (!pruefung.ok) return pruefung.antwort;
 
   const zeilen = await abfrage(
-    `SELECT id::int AS id, benutzername, rolle, aktiv, fehlversuche
+    // `jahre` ist NULL, wenn alle Jahrgaenge freigeschaltet sind – auch
+    // kuenftige. Das ist etwas anderes als eine Liste aller heutigen Jahre und
+    // wird hier deshalb unveraendert durchgereicht, nicht zu [] geglaettet.
+    `SELECT id::int AS id, benutzername, rolle, aktiv, rechte, jahre, fehlversuche
        FROM benutzer ORDER BY benutzername`,
   );
   return Response.json({ benutzer: zeilen });

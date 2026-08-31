@@ -12,7 +12,7 @@ import { eineZeile } from "@/lib/db";
 import {
   anhangKopfzeile, istArt, strom, zieldateiname, zielendung,
 } from "@/lib/herunterladen";
-import { NICHT_GELOESCHT } from "@/lib/sichtbar";
+import { sichtVon, sichtbar } from "@/lib/sichtbar";
 import { angemeldet } from "@/lib/sitzung";
 
 interface Zeile {
@@ -30,9 +30,8 @@ export async function GET(
   anfrage: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  if (!(await angemeldet())) {
-    return new Response("nicht angemeldet", { status: 401 });
-  }
+  const wer = await angemeldet();
+  if (!wer) return new Response("nicht angemeldet", { status: 401 });
 
   const nummer = Number((await params).id);
   if (!Number.isInteger(nummer) || nummer < 1) {
@@ -42,13 +41,14 @@ export async function GET(
   const roh = new URL(anfrage.url).searchParams.get("art") ?? "jpeg";
   const art = istArt(roh) ? roh : "jpeg";
 
-  // Vorgemerkte Aufnahmen werden nicht ausgeliefert – NICHT_GELOESCHT steht an
-  // einer Stelle und wird auch hier von dort geholt.
+  // Vorgemerkte Aufnahmen und gesperrte Jahrgaenge werden nicht ausgeliefert –
+  // die Bedingung steht an einer Stelle und wird auch hier von dort geholt.
+  const s = sichtbar(sichtVon(wer), { ab: 2 });
   const zeile = await eineZeile<Zeile>(
     `SELECT id::int AS id, pfad, dateityp, typ, aufnahme_lokal, dateigroesse,
             breite, hoehe
-       FROM bild WHERE id = $1 AND ${NICHT_GELOESCHT}`,
-    [nummer],
+       FROM bild WHERE id = $1 AND ${s.text}`,
+    [nummer, ...s.werte],
   );
   if (!zeile) return new Response("nicht gefunden", { status: 404 });
 

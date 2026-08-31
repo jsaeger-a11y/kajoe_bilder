@@ -6,13 +6,14 @@
  */
 
 import { vorgemerkte } from "@/lib/loeschen";
+import { sichtVon } from "@/lib/sichtbar";
 import { routeRecht } from "@/lib/zugriff";
 
 export async function GET(): Promise<Response> {
   const pruefung = await routeRecht("loeschen");
   if (!pruefung.ok) return pruefung.antwort;
 
-  const zeilen = await vorgemerkte();
+  const zeilen = await vorgemerkte(sichtVon(pruefung.wer));
   return Response.json({
     anzahl: zeilen.length,
     bilder: zeilen.map((z) => ({

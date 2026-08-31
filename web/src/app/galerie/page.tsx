@@ -12,12 +12,13 @@ import {
   auswahlAusSuche, auswahlteile, istMarkiert, umschalten,
 } from "@/lib/markierung";
 import { HOECHSTENS_JE_VORGANG } from "@/lib/rechte";
-import { NICHT_GELOESCHT } from "@/lib/sichtbar";
+import { sichtVon, sichtbar } from "@/lib/sichtbar";
 import { darf, verlangeAnmeldung } from "@/lib/zugriff";
 import Kopf from "../kopf";
 import Auswahlleiste from "./auswahlleiste";
 import Paketformular from "../paketformular";
 import Filterleiste from "./filterleiste";
+import KeinJahr from "../keinjahr";
 
 export const metadata: Metadata = { title: "Galerie" };
 
@@ -37,15 +38,16 @@ export default async function Galerie({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const wer = await verlangeAnmeldung();
+  const sicht = sichtVon(wer);
   const suche = await searchParams;
   const filter = filterAusSuche(suche);
   const auswahl = auswahlAusSuche(suche);
 
   const [{ kacheln, treffer }, zahlen, raeume, listen] = await Promise.all([
-    seite(filter),
-    trefferzahlen(filter),
-    zeitraeume(filter),
-    eigeneListen(wer.benutzerId),
+    seite(filter, sicht),
+    trefferzahlen(filter, sicht),
+    zeitraeume(filter, sicht),
+    eigeneListen(wer.benutzerId, sicht),
   ]);
 
   const seiten = Math.max(1, Math.ceil(treffer / SEITENGROESSE));
@@ -53,15 +55,16 @@ export default async function Galerie({
 
   // "alle Treffer waehlen" kennt der Server, nicht der Browser: die Kennungen
   // der Bilder, die gerade nicht auf dem Schirm stehen, hat sonst niemand.
-  const alleTrefferIds = auswahl.aktiv && eingeschraenkt ? await alleIds(filter) : [];
+  const alleTrefferIds = auswahl.aktiv && eingeschraenkt ? await alleIds(filter, sicht) : [];
 
   // Fuer die Groessenschaetzung des Pakets – nur wenn ueberhaupt etwas
   // markiert ist, sonst waere es eine Abfrage fuer nichts.
+  const sichtbarkeit = sichtbar(sicht, { ab: 2 });
   const markierteZeilen: Groessenzeile[] = auswahl.ids.length
     ? await abfrage<Groessenzeile>(
         `SELECT dateityp, typ, dateigroesse, breite, hoehe
-           FROM bild WHERE id = ANY($1::bigint[]) AND ${NICHT_GELOESCHT}`,
-        [auswahl.ids],
+           FROM bild WHERE id = ANY($1::bigint[]) AND ${sichtbarkeit.text}`,
+        [auswahl.ids, ...sichtbarkeit.werte],
       )
     : [];
 
@@ -136,7 +139,11 @@ export default async function Galerie({
         <Paketformular zeilen={markierteZeilen} ids={auswahl.ids} was="markierte Aufnahmen" />
       ) : null}
 
-      {kacheln.length === 0 ? <p className="hinweis">Zu diesen Filtern gibt es nichts.</p> : null}
+      {sicht.jahre?.length === 0 ? <KeinJahr /> : null}
+
+      {kacheln.length === 0 && sicht.jahre?.length !== 0 ? (
+        <p className="hinweis">Zu diesen Filtern gibt es nichts.</p>
+      ) : null}
 
       {gruppen.map((g) => (
         <section key={`${g.jahr}-${g.monat}`}>

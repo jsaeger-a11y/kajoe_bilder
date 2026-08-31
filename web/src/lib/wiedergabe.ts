@@ -19,7 +19,7 @@ import { promisify } from "node:util";
 import { vergissAbgeleitetGroesse } from "./bestand";
 import { abfrage, eineZeile } from "./db";
 import { ableitungspfad, originalpfad } from "./dateien";
-import { NICHT_GELOESCHT } from "./sichtbar";
+import { ALLES, sichtbar } from "./sichtbar";
 import { PROJEKTWURZEL } from "./umgebung";
 
 const ausfuehren = promisify(execFile);
@@ -50,8 +50,13 @@ async function erzeugen(bildId: number): Promise<Ergebnis> {
     pfad: string; sha256: string; jahr: number; monat: number;
     typ: string; hdr: boolean; wiedergabe_erzeugt: boolean;
   }>(
+    // ALLES und nicht die Sicht des Aufrufers: hierher kommt nur, wer die
+    // Route davor durchgelassen hat, und die prueft mit seiner Sicht. Die
+    // Zusammenfassung gleichzeitiger Aufrufe (`laufend`) haengt an der
+    // Bildnummer – eine Sicht darin waere ein zweiter Schluessel und damit
+    // eine zweite Antwort auf dieselbe Frage.
     `SELECT pfad, sha256, jahr, monat, typ, hdr, wiedergabe_erzeugt
-       FROM bild WHERE id = $1 AND ${NICHT_GELOESCHT}`,
+       FROM bild WHERE id = $1 AND ${sichtbar(ALLES).text}`,
     [bildId],
   );
 

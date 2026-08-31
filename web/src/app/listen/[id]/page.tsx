@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { dauertext } from "@/lib/galerie";
 import { bilderDerListe, listeZumSehen } from "@/lib/listen";
 import { HOECHSTENS_JE_LISTE } from "@/lib/rechte";
+import { sichtVon } from "@/lib/sichtbar";
 import { verlangeAnmeldung } from "@/lib/zugriff";
 import Kopf from "../../kopf";
 import Paketformular from "../../paketformular";
@@ -31,12 +32,17 @@ export default async function Listenansicht({
 
   // Eigene Liste ODER freigegebene fremde – gefiltert in der Abfrage, mit der
   // Kennung aus der Sitzung.
-  const liste = await listeZumSehen(id, wer.benutzerId);
+  const sicht = sichtVon(wer);
+  const liste = await listeZumSehen(id, wer.benutzerId, sicht);
   if (!liste) notFound();
 
   const meine = liste.besitzer_id === wer.benutzerId;
   const tun = String((await searchParams).tun ?? "");
-  const bilder = await bilderDerListe(id);
+  const bilder = await bilderDerListe(id, sicht);
+  // Was wegen eines gesperrten Jahrgangs fehlt. Still weglassen waere das
+  // Schlimmste: man laedt das Paket herunter und baut einen Kalender mit
+  // Luecken, ohne zu wissen, dass welche fehlen.
+  const fehlend = liste.anzahl - liste.verfuegbar;
 
   return (
     <main>
@@ -44,7 +50,7 @@ export default async function Listenansicht({
 
       <nav className="blaettern">
         <Link href="/listen">← alle Listen</Link>
-        <span>{bilder.length} von {HOECHSTENS_JE_LISTE} Bildern</span>
+        <span>{liste.anzahl} von {HOECHSTENS_JE_LISTE} Bildern</span>
       </nav>
 
       <h1>{liste.name}</h1>
@@ -52,6 +58,20 @@ export default async function Listenansicht({
         {meine ? "Deine Liste" : `Liste von ${liste.besitzer}`}
         {liste.freigegeben ? ", freigegeben" : ""} · angelegt {datum(liste.angelegt_am)}
       </p>
+
+      {/*
+        Die Bilder bleiben in der Liste, auch wenn ihr Jahrgang gesperrt ist –
+        und das muss dastehen. Still weglassen waere das Schlimmste: man laedt
+        das Paket herunter und baut einen Kalender mit Luecken, ohne zu wissen,
+        dass welche fehlen.
+      */}
+      {fehlend > 0 ? (
+        <p className="hinweis">
+          <strong>{liste.anzahl} Bilder, davon {fehlend} derzeit nicht verfügbar.</strong>{" "}
+          Sie stehen weiter in der Liste und sind wieder da, sobald der Jahrgang
+          freigeschaltet ist – im Paket unten sind sie nicht enthalten.
+        </p>
+      ) : null}
 
       {!meine ? (
         <p className="hinweis">
@@ -106,7 +126,8 @@ export default async function Listenansicht({
           durchsehen, sammeln, herunterladen ist der eigentliche Ablauf.
           Nach dem Herunterladen bleibt die Liste bestehen – sie ist kein
           Warenkorb, der sich leert. */}
-      <Paketformular zeilen={bilder} listeId={id} was="Aufnahmen in dieser Liste" />
+      <Paketformular zeilen={bilder} listeId={id} was="Aufnahmen in dieser Liste"
+                     fehlend={fehlend} />
 
       {bilder.length === 0 ? (
         <p className="hinweis">

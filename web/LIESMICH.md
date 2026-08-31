@@ -767,3 +767,159 @@ Telefon** – ich habe keins):
 
 **Nicht geprüft:** Zoomen mit zwei Fingern auf echter Hardware. Die Emulation
 kennt kein Pinch; `touchZoom` steht auf Leaflets Vorgabe.
+
+---
+
+# Jahresfreischaltung je Benutzer (Phase 6)
+
+Ein Konto sieht nur die Jahrgänge, die für es freigeschaltet sind. Anlass: für den
+Kalender bekommt jemand von außen Zugriff auf genau das Jahr, aus dem der Kalender
+entsteht.
+
+`benutzer.jahre` (Migration **006**, nicht 005 – die Nummer war beim Schreiben des
+Auftrags schon von der Verarbeitung belegt):
+
+| Wert | Bedeutung |
+|---|---|
+| `NULL` | alle Jahre, **auch künftige** – Vorgabe und Normalfall |
+| `{2025,2026}` | genau diese |
+| `{}` | keines |
+
+**Der Unterschied zwischen `NULL` und einer Liste aller heutigen Jahre ist der ganze
+Punkt.** Bei `NULL` erscheint ein neuer Jahrgang von selbst, sobald die ersten Bilder
+daraus eingelesen sind. Nachgemessen mit einer Attrappe aus 2027: bei `NULL` stand
+`2027 1` sofort im Jahresfilter, bei `{2025,2026}` nicht, beim Verwalter wieder ja.
+
+**Ein Verwalter ist nie eingeschränkt**, unabhängig vom Feld. Das entscheidet
+`sichtVon()` und niemand sonst. Geprüft mit einem Verwalterkonto, in dessen Feld
+`{2019}` steht: es sieht alle 16.232 Aufnahmen und alle acht Jahrgänge.
+
+## Durchgesetzt an einer Stelle – und der Übersetzer hat dabei geholfen
+
+`src/lib/sichtbar.ts` hatte bisher zwei exportierte Zeichenketten, `NICHT_GELOESCHT`
+und `VORGEMERKT`. Die sind jetzt modulintern; nach außen gibt es nur noch
+`sichtbar(sicht)` und `vorgemerktSichtbar(sicht)`, beide mit einem Argument, das nur
+hat, wer weiß, für wen die Abfrage läuft. Ebenso `bedingung(filter, sicht, ausser)` in
+`galerie.ts`.
+
+Das war kein Stilentscheid: **solange die Konstante frei herumlag, konnte jede neue
+Abfrage sie einsetzen und die Jahresfreischaltung daneben vergessen.** Beim Umbau hat
+`tsc` die zwanzig betroffenen Stellen in zwölf Dateien selbst aufgezählt, statt dass
+jemand sie suchen musste.
+
+Alle Wege zu einem Bild laufen jetzt darüber:
+
+| Weg | geprüft mit einem Konto, das nur `{2025}` hat |
+|---|---|
+| `/datei/<id>/vorschau` aus 2024 | **404** (2025: 200) |
+| `/datei/<id>/ansicht` aus 2024 | **404** (2025: 200) |
+| `/datei/<id>/wiedergabe` aus 2024 | **404** |
+| `/bild/<id>` aus 2024 | **404** (2025: 200) |
+| `/herunterladen/bild/<id>` aus 2024 | **404** (2025: 200) |
+| `POST /api/bild/<id>/wiedergabe`, Video aus 2024 | **404**, ohne ffmpeg anzuwerfen |
+| `/api/karte` | 1.801 – genau die verorteten Aufnahmen aus 2025 |
+| Galerie | 1.884 – genau der Bestand 2025, Jahresfilter bietet nur 2025 an |
+| Übersicht | „Für dich freigeschaltet sind 1.884 Aufnahmen", Tabelle nur mit 2025 |
+
+**Der wichtigste Ort ist `/datei/…`**, nicht die Galerie. Alles andere verbirgt Bilder
+in einer Anzeige; dort gehen sie über die Leitung.
+
+**Vormerken und Zurückholen zählen mit dazu.** Was jemand nicht sehen darf, darf er
+auch nicht löschen. Nachgemessen: auf der Einzelansicht eines erlaubten Bildes das
+versteckte Feld `bild` auf eine Kennung aus 2024 umgeschrieben und abgeschickt – die
+Action lief, `geloescht_am` blieb `NULL`. Dasselbe Formular unverändert auf dem
+erlaubten Bild hat gesetzt; die Abweisung lag also an der Bedingung und nicht an einem
+kaputten Formular.
+
+## Plattenzahlen fallen weg, nicht nur Bildzahlen
+
+Die Übersicht nennt sonst die Größe der Ableitungen und die Belegung von
+`/data/kajoe_bilder`. Diese Zahlen zählen Dateien und lassen sich nicht je Jahrgang
+trennen – wer nur 2025 sehen darf, läse daran den Umfang des ganzen Bestands ab.
+Sie entfallen deshalb, sobald jemand eingeschränkt ist. Geprüft: der Abschnitt
+„Platte" fehlt bei einem eingeschränkten Konto.
+
+## Auswahllisten: die Bilder bleiben drin, und die Liste sagt es
+
+Wird ein Jahr gesperrt, verschwinden seine Bilder aus der Anzeige und aus dem Paket –
+aus `auswahl_bild` verschwindet nichts. Nach der Freischaltung sind sie wieder da.
+
+Deshalb trägt `Liste` zwei Zahlen: `anzahl` (alles, was drinsteht und nicht vorgemerkt
+ist) und `verfuegbar` (was diese Person davon sehen darf). Beide kommen aus derselben
+Abfrage, `nurJahre()` steckt nur im zweiten Teilzähler.
+
+Geprüft mit einer Liste aus 12 Bildern von 2024 und 43 von 2025, Konto auf `{2025}`:
+
+- Listenansicht: „**55 Bilder, davon 12 derzeit nicht verfügbar.**"
+- 43 Kacheln
+- Paketzeile: „43 Aufnahmen in dieser Liste … **12 weitere** stehen in der Liste, sind
+  aber derzeit nicht freigeschaltet und kommen nicht mit ins Paket."
+- Das heruntergeladene ZIP: **43 Einträge, alle mit `2025-` im Dateinamen**, 374 MB
+- Listenübersicht: „55 (12 gesperrt)"
+
+## Bedienung
+
+Eine aufklappbare Zeile je Konto in `/verwaltung/benutzer`, mit einem Schalter
+**„Alle Jahre, auch künftige"** und darunter einem Kästchen je Jahr. Die Jahre kommen
+aus `SELECT DISTINCT jahr FROM bild`, mit der Anzahl daneben – nicht aus einer Liste im
+Code, die jemand nachführen müsste.
+
+**Welche Zeile offen ist, steht in der Adresse** (`?jahre=15#b15`), nicht in einem
+`<details>`, das der Server nachträglich aufziehen müsste. In der Tabelle steht bei
+einem eingeschränkten Konto, **welche** Jahre es sind, nicht nur „eingeschränkt".
+
+### Die `defaultChecked`-Falle, zum zweiten Mal
+
+React setzt beim Aktualisieren nur das **Attribut** `defaultChecked`, nicht die
+tatsächliche Ankreuzung des Feldes. Bleibt dasselbe Formular stehen, zeigt es nach dem
+Übernehmen weiter die alten Haken – etwa, wenn „Alle Jahre" die einzeln angekreuzten
+überstimmt hat. Das Formular trägt deshalb einen Schlüssel, in dem der gespeicherte
+Wert steckt (`j15-2019_2023_2025` bzw. `j15-alle`): ändert er sich, wirft React die
+Felder weg und baut sie neu.
+
+Nachgemessen im Browser, mit einer Gegenprobe in der Datenbank nach jedem Schritt:
+
+| Schritt | Anzeige | Datenbank |
+|---|---|---|
+| Ausgangslage | „2025" | `{2025}` |
+| 2023 und 2019 dazu | „2019, 2023, 2025" | `{2019,2023,2025}` |
+| „Alle Jahre" an | „alle, auch künftige" | `NULL` |
+| Kästchen danach | **alle leer**, Schalter an | – |
+| alles abwählen | „keine" | `{}` |
+| wieder 2025 | „2025" | `{2025}` |
+
+Ohne den Schlüssel hätten in der vierten Zeile noch 2019, 2023 und 2025 angehakt
+dagestanden, obwohl sie nichts mehr bedeuten.
+
+## Wirkt sofort, ohne Neuanmeldung
+
+Die Jahrgänge kommen bei **jedem** Aufruf frisch aus der Datenbank, wie die Rechte und
+wie `aktiv`. Gemessen in ein und derselben Sitzung, ohne dazwischen neu anzumelden:
+
+| gesetzt auf | Karte | `/datei` 2024 | `/datei` 2025 | `/bild` 2024 |
+|---|---|---|---|---|
+| `{2025}` | 1.801 | 404 | 200 | 404 |
+| `{2024,2025}` | 4.807 | 200 | 200 | 200 |
+| `{}` | 0 | 404 | 404 | 404 |
+| `NULL` | 15.083 | 200 | 200 | 200 |
+| `{2025}` | 1.801 | 404 | 200 | 404 |
+
+## Kein Jahrgang freigeschaltet ist kein Fehler
+
+`{}` ist ein gültiger Zustand: das Konto darf sich anmelden und sieht nichts. Ohne
+Hinweis stünde dort „Zu diesen Filtern gibt es nichts", und die Person suchte am Filter
+herum. Stattdessen steht auf Übersicht, Galerie und Karte ein eigener Satz
+(`src/app/keinjahr.tsx`). Alle drei Seiten antworten dabei mit **200**, keine
+Fehlerseite.
+
+## Von der Kommandozeile
+
+    tools/benutzer.sh jahre <name> alle          # NULL: alle Jahre, auch künftige
+    tools/benutzer.sh jahre <name> 2024,2025
+    tools/benutzer.sh jahre <name> keine
+
+`tools/benutzer.sh liste` zeigt die Spalte mit. Der Weg für den Alltag ist die
+Benutzerverwaltung; dieser hier ist der Rückweg, wenn niemand mehr hineinkommt – so wie
+das erste Konto auch dort und nirgends sonst entsteht. Ein Jahr, das es im Bestand noch
+nicht gibt, wird angenommen und nur angemerkt: einen kommenden Jahrgang vorab
+freizuschalten ist sinnvoll.
