@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { gb, ueberblick, zahl } from "@/lib/bestand";
-import { verlangeAnmeldung } from "@/lib/zugriff";
+import { darf, verlangeAnmeldung } from "@/lib/zugriff";
 import Kopf from "./kopf";
 
 export const metadata: Metadata = { title: "Übersicht" };
@@ -35,6 +35,14 @@ export default async function Uebersicht() {
         </p>
         <p>
           <Link href="/galerie">Zur Galerie →</Link>
+          {/* Der Verweis steht nur da, wo auch die Seite offen ist – die
+              Prüfung selbst sitzt in /karte und in /api/karte. */}
+          {darf(wer, "karte") ? (
+            <>
+              {"  ·  "}
+              <Link href="/karte?herkunft=alle">Zur Karte →</Link>
+            </>
+          ) : null}
         </p>
       </div>
 

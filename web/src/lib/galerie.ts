@@ -92,14 +92,31 @@ export function suchtext(
   return teile.length ? `?${teile.join("&")}` : "";
 }
 
-export function galerielink(
+/**
+ * Verweis auf eine Seite, die diese Filter versteht – Galerie oder Karte.
+ *
+ * Der Pfad ist ein Parameter, weil die Filterleiste auf beiden Seiten steht.
+ * Zwei Fassungen der Adressbildung liefen frueher oder spaeter auseinander,
+ * und dann verliert ein Filterklick auf der Karte den Ausschnitt oder in der
+ * Galerie die Seitenzahl.
+ */
+export function filterlink(
+  pfad: string,
   filter: Filter,
   aenderung: Partial<Filter> = {},
   zusatz: string[] = [],
 ): string {
   // Jede Filteraenderung faengt wieder auf Seite 1 an – sonst landet man auf
   // Seite 7 einer Menge, die nur noch drei Seiten hat.
-  return `/galerie${suchtext(filter, { seite: 1, ...aenderung }, zusatz)}`;
+  return `${pfad}${suchtext(filter, { seite: 1, ...aenderung }, zusatz)}`;
+}
+
+export function galerielink(
+  filter: Filter,
+  aenderung: Partial<Filter> = {},
+  zusatz: string[] = [],
+): string {
+  return filterlink("/galerie", filter, aenderung, zusatz);
 }
 
 /** Ist ueberhaupt etwas eingeschraenkt? Ohne Filter gibt es keine Sammelauswahl. */

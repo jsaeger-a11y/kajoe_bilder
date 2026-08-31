@@ -254,3 +254,132 @@ img, video { max-width: 100%; height: auto; }
 }
 .balken span { display: block; height: 100%; background: var(--betont);
                transition: width .5s linear; }
+
+/* --- Karte -------------------------------------------------------------- */
+
+main.weit { max-width: 78rem; }
+
+/*
+  Die Karte fuellt den Rest des Fensters, nicht mehr. Eine feste Hoehe in
+  Pixeln waere auf dem Telefon entweder ein Briefschlitz oder laenger als der
+  Schirm; dvh rechnet die eingeblendete Adressleiste mobiler Browser mit.
+*/
+.kartenfeld {
+  height: 62dvh;
+  min-height: 20rem;
+  margin: .75rem 0 0;
+  border: 1px solid var(--rand);
+  border-radius: 8px;
+  background: var(--feld);
+  /* Leaflet zeichnet mit eigenen Farben; auf dunklem Grund bliebe der Rahmen sonst hart. */
+  overflow: hidden;
+  z-index: 0;
+}
+
+.kartenstand {
+  margin: .5rem 0 0;
+  font-size: .9rem;
+  color: var(--leise);
+  font-variant-numeric: tabular-nums;
+}
+.kartenfehler { color: var(--warnung); }
+
+/* Gruppenmarke: Kreis mit der Anzahl, Durchmesser kommt aus dem Aufbau. */
+.kartengruppe {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  background: var(--betont);
+  color: #fff;
+  border: 2px solid rgba(255, 255, 255, .85);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .4);
+  font: 600 .8rem/1 system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+/* Einzelne Aufnahme: kleiner Punkt in einer Trefferflaeche von 34 Punkten. */
+.karteneinzeln {
+  display: block; width: 34px; height: 34px;
+  cursor: pointer;
+  background:
+    radial-gradient(circle at 50% 50%,
+      var(--betont) 0 7px,
+      rgba(255, 255, 255, .9) 7px 9px,
+      transparent 9px);
+}
+.karteneinzeln.video {
+  background:
+    radial-gradient(circle at 50% 50%,
+      #2f6f4f 0 7px,
+      rgba(255, 255, 255, .9) 7px 9px,
+      transparent 9px);
+}
+
+.kartenblase { display: flex; gap: .6rem; align-items: flex-start; font-size: .85rem; }
+.kartenblase img {
+  width: 112px; height: 112px; object-fit: cover;
+  border-radius: 4px; display: block; background: var(--rand);
+}
+
+/* Die Filterleiste ist auf der Karte zugeklappt – sonst bleibt vom Schirm
+   eines Telefons fuer die Karte selbst nichts uebrig. */
+.filterklappe > summary {
+  cursor: pointer; padding: .5rem 0; font-size: .9rem; color: var(--leise);
+  min-height: 2.5rem; display: flex; align-items: center;
+}
+
+/* Leaflet in den Farben der Seite – der Standard ist hell und blendet im
+   dunklen Modus. */
+.leaflet-container { font: inherit; background: var(--feld); }
+.leaflet-bar a, .leaflet-bar a:hover {
+  background: var(--feld); color: var(--schrift); border-bottom-color: var(--rand);
+}
+.leaflet-control-attribution {
+  background: rgba(255, 255, 255, .85); color: #222;
+}
+.leaflet-control-attribution a { color: #0a4d8c; }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background: var(--feld); color: var(--schrift);
+}
+.leaflet-popup-content { margin: .7rem .8rem; }
+
+/*
+  Auf dem Telefon sitzen die Zoomknoepfe oben links, die Namensnennung unten
+  rechts – der Daumenweg unten in der Mitte bleibt frei. Groesser als der
+  Leaflet-Standard, damit sie zu treffen sind.
+*/
+@media (pointer: coarse) {
+  /*
+    Der zusaetzliche Vorfahre ist noetig: Leaflet bringt dieselbe Regel mit
+    (30 px), sie hat dieselbe Spezifitaet und steht im gebauten Stylesheet
+    hinter dieser Datei. Ohne .kartenfeld davor gewinnt sie, und die Knoepfe
+    bleiben zu klein zum Treffen.
+  */
+  .kartenfeld .leaflet-touch .leaflet-bar a,
+  .kartenfeld.leaflet-touch .leaflet-bar a {
+    width: 42px; height: 42px; line-height: 42px; font-size: 1.3rem;
+  }
+}
+
+@media (max-width: 34rem) {
+  main.weit { padding-top: 1rem; }
+  main.weit h1 { font-size: 1.2rem; margin-bottom: .5rem; }
+  /*
+    Die ganze Karte soll ohne Rollen zu sehen sein – samt der Namensnennung,
+    die Leaflet unten rechts IN die Karte setzt. 20rem sind das, was Kopf,
+    Ueberschrift und die zugeklappte Filterzeile darueber brauchen.
+  */
+  .kartenfeld { height: calc(100dvh - 20rem); min-height: 15rem; }
+
+  /*
+    Massstab und Namensnennung sitzen beide am unteren Rand und ueberlappen
+    sich auf 350 Punkten Breite. Die Namensnennung ist Pflicht, der Massstab
+    ist Zugabe – also faellt der Massstab.
+  */
+  .kartenfeld .leaflet-control-scale { display: none; }
+
+  /* Die Kopfleiste umbricht auf dem Telefon in drei Zeilen und schiebt die
+     Karte nach unten aus dem Bild. Enger gesetzt bleibt sie lesbar. */
+  .leiste nav { gap: 0 .85rem; font-size: .9rem; }
+  .leiste nav a { min-height: 2.1rem; }
+}

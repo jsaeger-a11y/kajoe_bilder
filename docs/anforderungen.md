@@ -173,6 +173,11 @@ Entscheidung, keine Nebenwirkung:** GPS auf privaten Fotos hinter einem öffentl
 erreichbaren Tunnel heißt, dass die Wohnadresse in den Daten steht. Im Zweifel nur für
 Verwalter.
 
+Entschieden in Phase 5: die Karte hängt an einem eigenen Recht `karte`. Verwalter
+haben es ohnehin, ein Betrachter bekommt es einzeln oder gar nicht. Damit bleibt
+„im Zweifel nein" die Vorgabe, ohne dass eine andere Entscheidung eine
+Codeänderung braucht.
+
 ### D5 – Aufräumen
 
 Kategorien, die sich als uninteressant erweisen, lassen sich stapelweise löschen –
@@ -185,11 +190,12 @@ zweistufig, mit 30 Tagen Frist. Bilder in einer Auswahlliste bleiben verschont.
 | Phase | Inhalt | Status |
 |---|---|---|
 | 0 | Platte, Docker, Node, ffmpeg, Repo | fertig |
-| 1 | Ingest: Katalogisierung, Herkunft, Ableitungen | offen |
-| 2 | Anmeldung, Benutzerverwaltung, Galerie | offen |
-| 3 | Auswahllisten, Herunterladen, Aufräumen | offen |
-| 4 | Karte | offen |
-| 5 | Cloudflare Tunnel | offen |
+| 1a/1b | Ingest: Katalogisierung, Herkunft, Ableitungen | fertig |
+| 2a/2b | Anmeldung, Benutzerverwaltung, Galerie | fertig |
+| 3a/3b | Auswahllisten, Herunterladen, Aufräumen | fertig |
+| 4 | Verarbeitung aus der Oberfläche anstoßen | fertig |
+| 5 | Karte | fertig |
+| 6 | Cloudflare Tunnel | offen |
 
 ---
 
@@ -199,5 +205,4 @@ zweistufig, mit 30 Tagen Frist. Bilder in einer Auswahlliste bleiben verschont.
   wird gemessen, sobald 2025 und 2026 auf dem Server liegen
 - Ob unter `fremd` genug Brauchbares liegt, um es dauerhaft mitzuführen
 - Ob die alten Jahrgänge ab 2019 andere EXIF-Felder liefern als 2025/2026
-- Ob die Karte für alle sichtbar sein soll oder nur für Verwalter
 - Zweites OneDrive-Konto: wann und in welchem Umfang

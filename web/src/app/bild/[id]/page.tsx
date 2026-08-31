@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { eineZeile } from "@/lib/db";
 import { dauertext, filterAusSuche, nachbarn, suchtext } from "@/lib/galerie";
 import { unveraendert } from "@/lib/herunterladen";
+import { karteAusschnitt } from "@/lib/karte";
 import { eigeneListen, inWievielenListen } from "@/lib/listen";
 import { auswahlAusSuche, auswahlteile, istMarkiert, umschalten } from "@/lib/markierung";
 import { LOESCHFRIST_TAGE } from "@/lib/rechte";
@@ -97,6 +98,16 @@ export default async function Einzelansicht({
   ]);
   const zusatz = auswahlteile(auswahl);
   const anhang = suchtext(filter, {}, zusatz);
+
+  /*
+    Wer von der Karte kam, soll dorthin zurueck – auf denselben Ausschnitt.
+    Der Zurueck-Knopf des Browsers taete das auch, aber nur, solange niemand
+    zwischendurch weitergeblaettert hat. Der Ausschnitt kommt aus der Adresse
+    und wird hier NUR durchgereicht, nicht ausgewertet: `karteAusschnitt`
+    laesst ausschliesslich lat, lon und z durch.
+  */
+  const vonKarte = String(suche.von ?? "") === "karte" && darf(wer, "karte");
+  const karteZurueck = vonKarte ? `/karte${karteAusschnitt(suche, filter)}` : null;
   const markiert = istMarkiert(auswahl, b.id);
   const darfLoeschen = darf(wer, "loeschen");
   const laenge = dauertext(b.dauer_sekunden);
@@ -112,9 +123,13 @@ export default async function Einzelansicht({
         ) : (
           <span>← neuere</span>
         )}
-        <Link href={`/galerie${anhang}`}>
-          zurück zur Galerie · {rundum.stelle} von {rundum.treffer}
-        </Link>
+        {karteZurueck ? (
+          <Link href={karteZurueck}>zurück zur Karte</Link>
+        ) : (
+          <Link href={`/galerie${anhang}`}>
+            zurück zur Galerie · {rundum.stelle} von {rundum.treffer}
+          </Link>
+        )}
         {rundum.nachher !== null ? (
           <Link href={`/bild/${rundum.nachher}${anhang}`}>ältere →</Link>
         ) : (
@@ -249,11 +264,23 @@ export default async function Einzelansicht({
 
             <dt>Ort</dt>
             <dd>
-              {b.gps_status === "ok" && b.lat !== null && b.lon !== null
-                ? `${b.lat.toFixed(5)}, ${b.lon.toFixed(5)}`
-                : b.gps_status === "unplausibel"
-                  ? "Koordinate unplausibel, verworfen"
-                  : "keine Koordinate in der Datei"}
+              {b.gps_status === "ok" && b.lat !== null && b.lon !== null ? (
+                <>
+                  {b.lat.toFixed(5)}, {b.lon.toFixed(5)}
+                  {darf(wer, "karte") ? (
+                    <>
+                      {" · "}
+                      <Link href={`/karte?lat=${b.lat.toFixed(5)}&lon=${b.lon.toFixed(5)}&z=17&herkunft=alle`}>
+                        auf der Karte
+                      </Link>
+                    </>
+                  ) : null}
+                </>
+              ) : b.gps_status === "unplausibel" ? (
+                "Koordinate unplausibel, verworfen"
+              ) : (
+                "keine Koordinate in der Datei"
+              )}
             </dd>
 
             <dt>Eingelesen</dt>

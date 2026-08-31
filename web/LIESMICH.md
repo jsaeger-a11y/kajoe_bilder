@@ -558,3 +558,212 @@ Betrachter bekommt an derselben Stelle `ZugriffFehler`.
 aktiv ist, sieht der Aufrufer keine Meldung – der Knopf samt seiner
 Fehleranzeige wird in diesem Zustand gar nicht gerendert. Über die Oberfläche
 kommt man nie dorthin; abgewiesen wird trotzdem.
+
+---
+
+# Karte (Phase 5)
+
+`/karte` zeigt die Aufnahmeorte. Je weiter herausgezoomt, desto gröber die
+Gruppierung; beim Hineinzoomen zerfallen die Gruppen und schließlich stehen
+einzelne Aufnahmen da.
+
+## Wer sie sehen darf
+
+**Ein eigenes Recht `karte`, kein Selbstläufer.** In `CLAUDE.md` steht, dass
+GPS auf privaten Fotos hinter einem öffentlich erreichbaren Tunnel heißt: die
+Wohnadresse steht in den Daten – die Karte sei deshalb „im Zweifel nur für
+Verwalter". Genau so ist es umgesetzt: Verwalter dürfen ohnehin alles, ein
+Betrachter sieht die Karte erst, wenn ein Verwalter ihm das Recht in
+`/verwaltung/benutzer` gibt. Die Vorgabe bleibt damit „nein", ohne dass eine
+Meinungsänderung eine Codeänderung braucht.
+
+Wie berechtigt die Sorge ist, zeigt der Bestand: **5.247 der 15.083 verorteten
+Aufnahmen liegen in einem Umkreis von fünfzig Metern um denselben Punkt.** Wer
+die Karte aufmacht und einmal hineinzoomt, liest die Hausnummer.
+
+Geprüft: Betrachter ohne Recht → Seite 404, `/api/karte` 403, Menüpunkt fehlt.
+Recht in der Verwaltung erteilt → Seite 200, API 200, Menüpunkt da. Wieder
+entzogen → wieder 404/403. Ohne Anmeldung: Seite 307 zur Anmeldung, API 401.
+
+## Gruppiert wird auf dem Server
+
+Alle Punkte in den Browser zu laden und dort zu gruppieren (etwa mit
+Leaflet.markercluster) trägt bei 15.083 Punkten nicht, erst recht nicht auf
+einem Telefon. Stattdessen meldet der Browser Ausschnitt und Zoomstufe,
+`/api/karte` antwortet mit den Gruppen für genau diesen Ausschnitt. Was über
+die Leitung geht, hängt damit an der Bildschirmfläche und nicht an der
+Bestandsgröße – für ganz Deutschland sind es **4 kB für 11.436 Aufnahmen**.
+
+**Kein PostGIS.** Eine Gitterrechnung genügt; der Teilindex `bild_gps_idx`
+(`(lat, lon) WHERE gps_status = 'ok'`) ist seit Migration 001 da und wird
+benutzt.
+
+### Das Gitter liegt in Mercator-Koordinaten, nicht in Grad
+
+Ein Gitter aus gleichen Gradzahlen ist auf dem Bildschirm kein Quadrat: bei
+54 Grad Nord deckt ein Breitengrad rund anderthalbmal so viele Bildpunkte ab
+wie ein Längengrad. Die Zellen wären hochkant, und die Gruppen fielen senkrecht
+stärker zusammen als waagerecht. Gruppiert wird deshalb über
+`ln(tan(pi()/4 + radians(lat)/2))` und `radians(lon)` – in genau den
+Koordinaten, in denen die Karte gezeichnet wird.
+
+Die Zellweite hängt an einer Stelle (`zellweite()` in `src/lib/karte.ts`) und
+folgt aus der Zoomstufe: die Welt ist auf Stufe z genau 256·2^z Punkte breit
+und umfasst 2π im Bogenmaß, eine Zelle soll 72 Punkte haben.
+
+### Der Marker sitzt auf dem Schwerpunkt
+
+`avg(lat), avg(lon)` der Gruppe, nicht die Zellmitte – sonst stünden die Punkte
+sichtbar auf einem Raster statt dort, wo fotografiert wurde.
+
+**Der Preis dafür:** zwei benachbarte Zellen können ihre Schwerpunkte dicht
+beieinander haben, und dann überdecken sich die Kreise teilweise. Deshalb
+sinken große Gruppen nach unten (`zIndexOffset`), einzelne Aufnahmen liegen
+ganz oben: ein kleiner Kreis kann einen großen nie ganz verdecken, umgekehrt
+schon. Wer den verdeckten trotzdem nicht trifft, klickt den davorliegenden –
+auch der zoomt hinein, und eine Stufe weiter stehen beide getrennt.
+
+### Eine Gruppe mit einer Aufnahme ist keine Gruppe
+
+Zellen mit `count(*) = 1` kommen als Aufnahme zurück, mit Datum und
+Vorschaubild, nicht als Kreis mit der Zahl 1. Geprüft über alle Stufen von 4
+bis 19 über Norderstedt: **0 Gruppen mit genau einer Aufnahme.**
+
+### Ab 150 Aufnahmen im Ausschnitt wird gar nicht mehr gruppiert
+
+Das ist die einzige Regel für den Übergang, und sie hängt an der Anzahl, nicht
+an der Zoomstufe. „Ab Stufe 19 einzeln" wäre an genau einer Stelle falsch:
+dort, wo 2.767 Aufnahmen auf zwanzig Metern liegen. So zerfällt umgekehrt jede
+Gruppe beim Hineinzoomen irgendwann von selbst, ohne Sonderfall.
+
+**Eine Sackgasse bleibt:** über dem dichtesten Punkt steht auf der feinsten
+Stufe (19) immer noch eine Gruppe von 2.121. Enger liegen die Koordinaten
+beieinander, als OpenStreetMap-Kacheln auflösen. Ein Klick darauf sagt das –
+„2.121 Aufnahmen an nahezu derselben Stelle. Weiter zerfällt diese Gruppe
+nicht" – und zeigt eine Aufnahme daraus, statt ins Leere zu führen.
+
+## Filter: dieselbe Bedingung wie in der Galerie
+
+`bedingung()` aus `src/lib/galerie.ts`, mit `ausser: "ort"`, plus
+`gps_status = 'ok'`. Keine zweite Fassung – zwei Formulierungen laufen
+auseinander, und dann zeigt die Karte etwas anderes als die Galerie.
+`geloescht_am IS NULL` bringt `bedingung()` mit.
+
+Der Ortsfilter der Galerie fällt weg: „ohne Ort" wäre auf der Karte kein
+Filter, sondern eine leere Fläche. Ein `ort=ohne` aus der Galerie wird beim
+Betreten der Karte zurückgesetzt und taucht in keiner Kartenadresse auf.
+
+Geprüft, Karte gegen Datenbank gegen Galerie:
+
+| Filter | Karte | Datenbank | Galerie „mit Ort" |
+|---|---|---|---|
+| ohne Einschränkung | 15.083 | 15.083 | 15.083 |
+| `jahr=2026` | 607 | 607 | 607 |
+| `jahr=2025` | 1.801 | 1.801 | 1.801 |
+| `typ=video` | 709 | 709 | 709 |
+| `jahr=2026&monat=7` | 82 | 82 | – |
+| `typ=bild&jahr=2024` | 2.885 | 2.885 | – |
+| `herkunft=fremd` | 0 | 0 | – |
+
+Und: eine Aufnahme vorgemerkt → sie verschwindet sofort von der Karte
+(15.083 → 15.082), Vormerkung zurückgenommen → sie ist wieder da.
+
+## Wie viele Aufnahmen keinen Ort haben, steht auf der Seite
+
+Unter der Karte, mit der Zahl des aktuellen Filters und einem Verweis in die
+Galerie. Ohne diese Zeile hält man die Karte für vollständig und sucht ein
+Bild, das dort nie erscheinen wird. Ohne Filter sind es **1.149 von 16.232
+(7 %)**: 410 ohne Koordinate in der Datei, 739 mit einer Koordinate, die beim
+Einlesen als unplausibel verworfen wurde.
+
+## Ausschnitt und Zoomstufe stehen in der Adresse
+
+`lat`, `lon`, `z` – die **Mitte**, nicht der Rahmen: der Rahmen hängt an der
+Fenstergröße, und dieselbe Adresse zeigte auf dem Telefon sonst einen anderen
+Ort als auf dem Rechner. Geschrieben wird mit `history.replaceState`, nicht mit
+`pushState`: ein Verlaufseintrag je Kartenbewegung machte den Zurück-Knopf
+unbrauchbar.
+
+Geprüft: Karte irgendwohin gezoomt, Adresse in ein zweites Fenster kopiert –
+derselbe Ausschnitt, dieselben 43 Punkte. Aus der Einzelansicht führt „zurück
+zur Karte" auf die Stelle zurück, von der man kam; der Zurück-Knopf des
+Browsers ebenso.
+
+**Filterklicks behalten den Ausschnitt.** Die Filterleiste wird auf dem Server
+gerendert, mit dem Ausschnitt, der beim Seitenaufruf in der Adresse stand –
+danach verschiebt die Karte die Adresse fortlaufend. `Ausschnittverweise`
+vervollständigt den Verweis deshalb erst beim Klicken. Ohne JavaScript
+funktioniert er weiterhin, nur ohne Ausschnitt; ohne JavaScript gibt es aber
+ohnehin keine Karte.
+
+## Kein Rückwärtssuchen nach Ortsnamen
+
+Zu jeder Gruppe „Wien" oder „Norderstedt" anzuzeigen wäre verlockend. Es hieße
+aber, private Aufnahmekoordinaten – darunter die eigene Wohnung – einzeln an
+einen fremden Dienst zu schicken. Es gibt deshalb **keinen** Aufruf mit
+Koordinaten nach außen. Die Kachelschicht fragt Bilder nach Zoomstufe, Spalte
+und Zeile; daraus ist ablesbar, welcher Ausschnitt betrachtet wird, mehr nicht.
+
+Die Namensnennung von OpenStreetMap hängt an der Kachelschicht und ist damit
+da, solange die Karte da ist.
+
+## Nicht bei jeder Bewegung nachladen
+
+350 ms nach dem letzten `moveend`, und der vorige Zug wird abgebrochen
+(`AbortController`) statt abgewartet – sonst kann eine alte Antwort eine neue
+überschreiben und die Karte zeigt Punkte eines Ausschnitts, der nicht mehr zu
+sehen ist.
+
+Nachgemessen im Browser:
+
+| Bedienung | Anfragen an `/api/karte` |
+|---|---|
+| Seite laden | 1 |
+| ein Zug über 40 Zwischenschritte (2,3 s) | 1 |
+| fünf Züge schnell hintereinander | 1 |
+| sechs Zoomschritte hintereinander | 1 |
+
+## Antwortzeiten
+
+Zehn Messungen je Ausschnitt, nach drei Aufwärmläufen, Median:
+
+| Ausschnitt | Zeit | Inhalt | JSON |
+|---|---|---|---|
+| ganz Europa, Stufe 4 | 11,8 ms | 15.083 → 7 Gruppen | 1,3 kB |
+| ganz Deutschland, Stufe 6 | 11,9 ms | 11.436 → 22 Gruppen + 1 einzeln | 4,0 kB |
+| ganz Deutschland, Stufe 9 | 12,1 ms | 11.436 → 54 Gruppen + 5 einzeln | 10,1 kB |
+| Norderstedt, Stufe 14 | 9,1 ms | 7.523 → 40 Gruppen + 9 einzeln | 8,0 kB |
+| eine Straße, Stufe 19 | 9,5 ms | 5.388 → 22 Gruppen + 7 einzeln | 4,6 kB |
+| Weltrahmen + Stufe 19 (von Hand gebaut) | 27,2 ms | Notbremse bei 2.000 Zellen | 302 kB |
+
+Die Zusammenfassung passiert in der Datenbank, nicht in Node: für ganz
+Deutschland kommt **eine Zeile je Zelle** heraus, 23 statt 11.436
+(`HashAggregate` über einem `Seq Scan` – bei 65 % Trefferquote der richtige
+Plan). Für einen Straßenzug greift der Teilindex: `Bitmap Index Scan on
+bild_gps_idx`, 4,4 ms.
+
+Die Notbremse (`HOECHSTENS_ZELLEN = 2000`) ist im Betrieb unerreichbar – mehr
+Zellen als Bildschirmfläche gibt es nicht. Sie fängt den von Hand gebauten
+Aufruf ab und sagt es in der Antwort (`abgeschnitten`).
+
+## Mobil
+
+Gemessen mit 390 × 844 und Toucheingabe (Chromium-Emulation, **kein echtes
+Telefon** – ich habe keins):
+
+- kein waagerechter Überlauf
+- die Karte beginnt bei 230 px und ist 524 px hoch – ganz im Bild, samt der
+  Namensnennung unten rechts
+- Zoomknöpfe 42 × 42 statt Leaflets 30 × 30. Der zusätzliche Vorfahre in der
+  CSS-Regel ist nötig: Leaflet bringt dieselbe Regel mit, sie hat dieselbe
+  Spezifität und steht im gebauten Stylesheet dahinter
+- Marker 38 bis 52 px
+- Bedienelemente oben links und unten rechts, die Daumenmitte unten bleibt frei
+- der Maßstab entfällt auf schmalen Schirmen: er sitzt unten links und
+  überlappte die Namensnennung
+- die Filterleiste ist zugeklappt, sonst bliebe für die Karte nichts übrig
+- die Kopfleiste ist auf schmalen Schirmen enger gesetzt; mit dem neuen
+  Menüpunkt umbrach sie sonst in drei Zeilen und schob die Karte aus dem Bild
+
+**Nicht geprüft:** Zoomen mit zwei Fingern auf echter Hardware. Die Emulation
+kennt kein Pinch; `touchZoom` steht auf Leaflets Vorgabe.

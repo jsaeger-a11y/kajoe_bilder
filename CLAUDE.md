@@ -47,11 +47,16 @@ Ports werden hier eingetragen, bevor sie belegt werden.
 | Phase | Inhalt | Status |
 |---|---|---|
 | 0 | Platte, Docker, Node, ffmpeg, Repo | **fertig** |
-| 1 | Ingest: Katalogisierung, Herkunft, Ableitungen | offen |
-| 2 | Anmeldung, Benutzerverwaltung, Galerie | offen |
-| 3 | Auswahllisten, Herunterladen, Aufräumen | offen |
-| 4 | Karte (GPS) | offen |
-| 5 | Cloudflare Tunnel | offen |
+| 1a/1b | Ingest: Katalogisierung, Herkunft, Ableitungen | **fertig** |
+| 2a/2b | Anmeldung, Benutzerverwaltung, Galerie | **fertig** |
+| 3a/3b | Auswahllisten, Herunterladen, Aufräumen | **fertig** |
+| 4 | Verarbeitung aus der Oberfläche anstoßen | **fertig** |
+| 5 | Karte (GPS) | **fertig** |
+| 6 | Cloudflare Tunnel | offen |
+
+Die Nummern folgen den Auftragsdateien in `docs/`. Gegenüber der ursprünglichen
+Planung ist eine Phase dazugekommen – das Anstoßen der Verarbeitung aus der
+Oberfläche –, deshalb sind Karte und Tunnel um eins nach hinten gerückt.
 
 **Bitte einzeln bauen und testen, nicht alles auf einmal.**
 
@@ -286,6 +291,15 @@ Koordinaten auf die letzte Nachkommastelle.
 Wohnadresse steht in den Daten.** Die Karte ist deshalb kein Selbstläufer, sondern
 eine Entscheidung – im Zweifel nur für Verwalter.
 
+Seit Phase 5 ist genau das umgesetzt: `/karte` hängt am Recht `karte`. Ein
+Verwalter darf ohnehin alles, ein Betrachter sieht die Karte erst, wenn jemand
+ihm dieses Recht ausdrücklich gibt. Die Zahlen geben der Vorsicht recht:
+**5.247 der 15.083 verorteten Aufnahmen liegen in einem Umkreis von fünfzig
+Metern um denselben Punkt.** Eine Stufe hineingezoomt sind Straßenname und
+Hausnummer zu lesen. Es gibt kein Rückwärtssuchen nach Ortsnamen – das hieße,
+private Koordinaten einzeln an einen fremden Dienst zu schicken. **Kein
+PostGIS**: eine Gitterrechnung über gerundeten Koordinaten genügt.
+
 ### Einlesen ist ein wiederkehrender Vorgang
 
 Es kommen weitere Bestände dazu, unter anderem aus einem zweiten OneDrive-Konto.
@@ -423,6 +437,20 @@ Täglicher `pg_dump` ab Phase 0, nicht später.
   der Dump 1,5 MB überschritt – die Prüfung „enthält die Tabelle `bild`" meldete Nein,
   während die Tabelle drin war. Stattdessen einmal in eine Variable lesen und mit
   `grep … <<< "$VAR"` prüfen
+- **Ein Gitter aus gleichen Gradzahlen ist auf dem Bildschirm kein Quadrat.**
+  Bei 54 Grad Nord deckt ein Breitengrad rund anderthalbmal so viele Bildpunkte
+  ab wie ein Längengrad. Wer Kartenpunkte über `floor(lat/zelle)` und
+  `floor(lon/zelle)` zusammenfasst, bekommt hochkante Zellen: senkrecht fallen
+  die Gruppen stärker zusammen als waagerecht, und niemand sieht, warum.
+  Gruppiert wird deshalb in Mercator-Koordinaten – denen, in denen die Karte
+  gezeichnet wird
+- **Eine CSS-Regel mit derselben Spezifität wie die der Bibliothek verliert.**
+  Was zuletzt im gebauten Stylesheet steht, gewinnt, und das ist bei einem
+  Import aus `node_modules` nicht die eigene Datei. `.leaflet-touch
+  .leaflet-bar a { width: 42px }` blieb wirkungslos, die Zoomknöpfe waren
+  weiterhin 30 Punkte groß und auf dem Telefon nicht zu treffen. Ein
+  zusätzlicher Vorfahre reicht – aber man muss es nachmessen, im Quelltext
+  sieht die Regel richtig aus
 - **`const enum` aus einer Bibliothek nie im Code verwenden.** TypeScript löscht die
   Aufzählung beim Übersetzen; zur Laufzeit ist das Objekt leer, und was ankommt, ist
   `undefined`. Mit `isolatedModules` – das Next voraussetzt – bricht `tsc` immerhin ab,
