@@ -1,0 +1,45 @@
+# Der Aufraeumlauf – der einzige Vorgang im System, der Dateien wirklich
+# entfernt.
+#
+# Deshalb steht hier `--timer` und nicht etwa `--probe` oder gar nichts: der
+# Modus kommt aus AUFRAEUMEN_SCHARF in der `.env`. Stuende er hier, waere die
+# Umstellung auf scharf ein Eingriff in diese Datei samt `daemon-reload` – ein
+# Schritt, den jemand vergisst, und dann laeuft der Lauf weiter im Probelauf,
+# ohne dass es auffaellt.
+#
+# Benutzerdienst wie die Sicherung: der Docker-Zugriff haengt an der
+# Gruppenmitgliedschaft von jsaeger, und die `.env` liegt im Home.
+
+[Unit]
+Description=kajoe_bilder – Aufraeumlauf (Sitzungen, Anmeldeversuche, Dateien)
+Documentation=file:///home/jsaeger/webspace/kajoe_bilder/tools/aufraeumen.sh
+# Ohne laufenden Docker-Dienst gibt es keine Datenbank.
+After=docker.service
+# Nur eine Reihenfolge, kein Ausloeser: holt systemd nach einer Auszeit beide
+# Timer gleichzeitig nach, soll die Sicherung VOR dem Loeschen laufen. Im
+# Normalbetrieb liegen 03:00 und 03:20 ohnehin auseinander.
+After=kajoe-sicherung.service
+
+# Ohne diese Zeile greift systemds Startbegrenzung – fuenf Starts in zehn
+# Sekunden. Beim Erproben von Hand ist die schnell erreicht, und danach
+# verweigert die Einheit den Start, bis jemand `reset-failed` aufruft. Ein
+# Lauf, der heute scheitert, soll morgen wieder laufen und nicht an einer
+# Zaehlung haengenbleiben, die niemand sieht. (Gelernt in Phase 4 an
+# kajoe-verarbeiten.path.)
+#
+# UND SIE STEHT IN [Unit], NICHT IN [Service]. Im falschen Abschnitt wird sie
+# stillschweigend verworfen – die einzige Spur ist eine Zeile
+# "Unknown key ... ignoring" im Journal, die niemand liest. Genau so stand sie
+# hier zuerst.
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+# systemd kennt ~/.bashrc nicht. Voller Pfad, und PATH ausdruecklich setzen.
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+WorkingDirectory=/home/jsaeger/webspace/kajoe_bilder
+ExecStart=/home/jsaeger/webspace/kajoe_bilder/tools/aufraeumen.sh --timer
+
+# Der Container braucht nach einem Neustart des Rechners einen Moment, und ein
+# scharfer Lauf ueber hunderte Dateien dauert.
+TimeoutStartSec=1800

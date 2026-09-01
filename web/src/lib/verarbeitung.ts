@@ -11,6 +11,7 @@
 import "server-only";
 
 import { readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 
@@ -122,22 +123,51 @@ export interface Laufend {
 }
 
 /**
+ * Kennung des laufenden Systemstarts.
+ *
+ * Der Kern vergibt sie bei jedem Start neu. Sie ist der einzige zuverlaessige
+ * Weg, eine Zeile aus einem frueheren Start zu erkennen: nach einem Neustart
+ * beginnt die Vergabe der Prozessnummern wieder von vorn, und eine gemerkte
+ * `pid` kann dann auf einen voellig anderen, lebenden Prozess zeigen.
+ */
+function bootKennung(): string | null {
+  try {
+    return readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Zeilen, deren Prozess es nicht mehr gibt, auf 'abgebrochen' setzen.
  *
  * Eine Zeile, die auf `laeuft` stehenbleibt, blockiert sonst jeden weiteren
  * Anstoss – dieselbe Falle wie eine Sperrdatei, die niemand aufraeumt.
  * `process.kill(pid, 0)` toetet nichts, es fragt nur nach.
+ *
+ * Die Prozessnummer allein traegt aber nur, solange der Rechner durchlaeuft.
+ * Deshalb steht die Kennung des Systemstarts davor – siehe Migration 008.
  */
 export async function verwaisteAufraeumen(): Promise<number> {
-  const offen = await abfrage<{ id: number; pid: number | null; rechner: string | null }>(
-    `SELECT id::int AS id, pid, rechner FROM verarbeitung WHERE beendet_am IS NULL`,
+  const offen = await abfrage<{
+    id: number; pid: number | null; rechner: string | null; boot_kennung: string | null;
+  }>(
+    `SELECT id::int AS id, pid, rechner, boot_kennung
+       FROM verarbeitung WHERE beendet_am IS NULL`,
   );
+  const jetzigerStart = bootKennung();
   let aufgeraeumt = 0;
   for (const z of offen) {
     // Ein Lauf auf einem anderen Rechner ist von hier aus nicht zu beurteilen.
     if (z.rechner && z.rechner !== hostname()) continue;
+
+    // Ein anderer Systemstart: der Prozess ist mit Sicherheit weg, und die
+    // Prozessnummer darf gar nicht erst befragt werden.
+    const ausAltemStart =
+      z.boot_kennung !== null && jetzigerStart !== null && z.boot_kennung !== jetzigerStart;
+
     let lebt = false;
-    if (z.pid) {
+    if (z.pid && !ausAltemStart) {
       try {
         process.kill(z.pid, 0);
         lebt = true;
@@ -149,9 +179,9 @@ export async function verwaisteAufraeumen(): Promise<number> {
     await abfrage(
       `UPDATE verarbeitung
           SET zustand = 'abgebrochen', beendet_am = now(),
-              bemerkung = coalesce(bemerkung || ' | ', '') || 'Prozess nicht mehr vorhanden'
+              bemerkung = coalesce(bemerkung || ' | ', '') || $2
         WHERE id = $1 AND beendet_am IS NULL`,
-      [Number(z.id)],
+      [Number(z.id), ausAltemStart ? "Neustart dazwischen" : "Prozess nicht mehr vorhanden"],
     );
     aufgeraeumt += 1;
   }

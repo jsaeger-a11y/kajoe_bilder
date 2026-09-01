@@ -391,3 +391,94 @@ Durchschnitt seit dem Start.
 
 `ingest_lauf` wird jetzt ebenfalls unterwegs fortgeschrieben. Bricht ein Lauf
 ab, steht in der Zeile trotzdem, wie weit er kam.
+
+---
+
+# Der Aufräumlauf läuft von selbst (Phase 7)
+
+`kajoe-aufraeumen.timer` stößt `tools/aufraeumen.sh --timer` täglich um
+**03:20 UTC** an – nach der Sicherung um 03:00, damit der Dump von heute Nacht
+noch den Stand *vor* dem Löschen enthält. `Persistent=true`: war der Rechner
+um 03:20 aus, wird der Lauf nachgeholt. Dreißig Tage alte Vormerkungen werden
+nicht jünger.
+
+Der Lauf war bis dahin absichtlich von Hand. Beim Automatisieren kommen zwei
+Sicherungen dazu, die nichts kosten.
+
+## Der Probelauf ist die Vorgabe, und der Schalter steht in der `.env`
+
+    AUFRAEUMEN_SCHARF=0   zählen und berichten, nichts entfernen (Vorgabe)
+    AUFRAEUMEN_SCHARF=1   wirklich entfernen
+
+**Nicht in der Unit und nicht im Skript.** In der Unit wäre die Umstellung ein
+Eingriff in eine Dienstdatei samt `daemon-reload` – ein Schritt, den jemand
+vergisst, und dann läuft der Lauf weiter im Probelauf, ohne dass es auffällt.
+Fehlt die Zeile ganz, wird nur gezählt: die vorsichtige Richtung ist die
+Vorgabe.
+
+Ein Aufruf **von Hand** behält seine bisherige Bedeutung: `tools/aufraeumen.sh`
+löscht, `--probe` zählt nur. Nur `--timer` liest die `.env`.
+
+Der Modus steht am Anfang und am Ende des Berichts, in Großbuchstaben. Wer
+überfliegt, soll nicht raten müssen, ob gerade wirklich gelöscht wurde.
+
+## Die Obergrenze: 2.500 Dateien, dann Abbruch
+
+Findet ein Lauf auf einmal mehr, ist das kein normaler Betrieb, sondern ein
+Versehen – ein Sammelvorgang, der danebenging. Dann bricht er ab und meldet,
+statt zu arbeiten. Dateien kommen nicht zurück.
+
+Hergeleitet: die Oberfläche lässt höchstens `HOECHSTENS_JE_VORGANG = 500`
+Aufnahmen je Sammelvorgang vormerken, je Aufnahme bis zu vier Dateien – also
+bis zu 2.000 aus einem einzigen Vorgang. 2.500 lässt so einen Vorgang samt
+Rest eines Vortages durch. Der ganze Bestand wären rund 50.000. Die Zahl steht
+als `HOECHSTENS_DATEIEN` in `ingest/aufraeumen.py`, an einer Stelle.
+
+**Erst zählen, dann löschen.** Der Lauf sammelt in einem ersten Durchgang
+alles ein, prüft die Grenze und fängt erst danach an zu entfernen. Ein Abbruch
+lässt deshalb garantiert keine halb aufgeräumte Menge zurück – nachgemessen:
+700 Attrappen mit 2.800 Dateien, Abbruch, **alle 2.800 noch da**.
+
+Ist die Menge wirklich richtig, hilft ein einmaliger Lauf von Hand:
+
+    tools/aufraeumen.sh --hoechstens 3000
+
+## Jeder Lauf wird protokolliert
+
+Solange der Lauf von Hand lief, sah den Bericht, wer ihn anstieß. Ein Timer
+stößt ihn nachts an, und dann sieht ihn niemand – ein Vorgang, der unbeobachtet
+löscht, ist derselbe Fall wie eine ungetestete Sicherung.
+
+Deshalb `aufraeumlauf` (Migration 007), eine Zeile je Lauf, und
+`tools/status.sh` zeigt die letzten fünf:
+
+```
+  begonnen         Modus   durch  Ausgang  Sitz. Versu. Zeilen Datei.     Platz
+  2026-09-01 13:02 scharf  timer  grenze       0      0    700   2800      0 MB
+                   ABBRUCH: 2800 Datei(en) in 700 Zeile(n) faellig, erlaubt sind 2500.
+  2026-09-01 13:02 scharf  timer  fertig       0      0      3     12      0 MB
+  2026-09-01 13:01 probe   timer  fertig       0      0      3     12      0 MB
+```
+
+Die Zahlen heißen `_faellig` und nicht `_entfernt`: sie sagen, was der Lauf
+**gefunden** hat. Ob es wegkam, sagt `modus`. Ein Probelauf, der
+„12 entfernt" protokollierte, wäre eine Lüge in der Datenbank.
+
+`ausgang` ist `fertig`, `grenze` oder `fehler` – und nie leer, wenn der Prozess
+lebte: ein `trap … EXIT` schreibt auch bei einem Abbruch etwas hinein.
+Nachgemessen mit einem erzwungenen Fehler: die Zeile steht auf `fehler` mit
+„Abbruch mit Rueckgabewert 2". `status.sh` warnt bei Zeilen ohne Ausgang
+(abgestürzt) und bei Abbrüchen an der Grenze in den letzten sieben Tagen.
+
+## Was geprüft wurde
+
+| | |
+|---|---|
+| Timer steht in `list-timers` | nächster Lauf 03:20:46 UTC, nach der Sicherung um 03:04 |
+| Probelauf mit 3 Attrappen | meldet 12 Dateien, **entfernt nichts**, alle 12 danach noch da |
+| Umstellung auf scharf | eine Zeile in der `.env`; derselbe Fall wird entfernt |
+| Zeilen bleiben, `sha256` erhalten | 3 Zeilen vorher, 3 nachher, `sha256` gleich, Merkmale auf `FALSE` |
+| Obergrenze mit 700 Attrappen | Abbruch bei 2.800 > 2.500, **keine Datei entfernt**, Dienst auf `failed` |
+| `--hoechstens 3000` von Hand | läuft durch, 2.800 entfernt |
+| `Persistent=true` | Stempeldatei auf vor 3 Tagen gesetzt, Timer gestartet → Lauf holt sofort nach |
+| `status.sh` | zeigt Modus, Auslöser, Ausgang und Zahlen |

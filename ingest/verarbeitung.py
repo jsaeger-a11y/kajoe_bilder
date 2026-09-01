@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import socket
+from pathlib import Path
 from dataclasses import dataclass, field
 
 from datenbank import verbindung
@@ -99,15 +100,30 @@ class Lauf:
             cur.execute(f"UPDATE verarbeitung SET {', '.join(felder)} WHERE id = %s", werte)
 
 
+def boot_kennung() -> str | None:
+    """Kennung des laufenden Systemstarts.
+
+    Der Kern vergibt sie bei jedem Start neu. Sie ist der einzige zuverlaessige
+    Weg, eine Zeile aus einem frueheren Start zu erkennen: nach einem Neustart
+    faengt die Vergabe der Prozessnummern wieder von vorn an, und `pid` kann
+    dann auf einen voellig anderen, lebenden Prozess zeigen.
+    """
+    try:
+        return Path("/proc/sys/kernel/random/boot_id").read_text().strip() or None
+    except OSError:
+        return None
+
+
 def beginne(schritt: str, gesamt: int, angestossen_von: int | None,
             conn) -> Lauf:
     """Zeile anlegen und den Lauf zurueckgeben."""
     with conn.cursor() as cur:
         cur.execute(
             """INSERT INTO verarbeitung
-                   (schritt, gesamt, angestossen_von, pid, rechner)
-               VALUES (%s, %s, %s, %s, %s) RETURNING id::int""",
-            (schritt, gesamt, angestossen_von, os.getpid(), socket.gethostname()),
+                   (schritt, gesamt, angestossen_von, pid, rechner, boot_kennung)
+               VALUES (%s, %s, %s, %s, %s, %s) RETURNING id::int""",
+            (schritt, gesamt, angestossen_von, os.getpid(),
+             socket.gethostname(), boot_kennung()),
         )
         neu = cur.fetchone()[0]
     return Lauf(id=int(neu), schritt=schritt, gesamt=gesamt, _conn=conn)
@@ -121,18 +137,28 @@ def verwaiste_aufraeumen(conn) -> int:
     """
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT id::int, pid, rechner FROM verarbeitung
+            """SELECT id::int, pid, rechner, boot_kennung FROM verarbeitung
                 WHERE beendet_am IS NULL""",
         )
         offen = cur.fetchall()
 
     hier = socket.gethostname()
+    jetziger_start = boot_kennung()
     aufgeraeumt = 0
-    for lauf_id, pid, rechner in offen:
+    for lauf_id, pid, rechner, kennung in offen:
         if rechner != hier:
             continue  # ein anderer Rechner – hier nicht zu beurteilen
+
+        # Ein anderer Systemstart: der Prozess ist mit Sicherheit weg, und die
+        # Prozessnummer darf gar nicht erst befragt werden – nach einem
+        # Neustart kann sie auf einen fremden, lebenden Prozess zeigen.
+        aus_altem_start = (
+            kennung is not None and jetziger_start is not None
+            and kennung != jetziger_start
+        )
+
         lebt = False
-        if pid:
+        if pid and not aus_altem_start:
             try:
                 os.kill(pid, 0)
                 lebt = True
@@ -146,10 +172,10 @@ def verwaiste_aufraeumen(conn) -> int:
             cur.execute(
                 """UPDATE verarbeitung
                       SET zustand = 'abgebrochen', beendet_am = now(),
-                          bemerkung = coalesce(bemerkung || ' | ', '')
-                                      || 'Prozess nicht mehr vorhanden'
+                          bemerkung = coalesce(bemerkung || ' | ', '') || %s
                     WHERE id = %s AND beendet_am IS NULL""",
-                (lauf_id,),
+                ("Neustart dazwischen" if aus_altem_start
+                 else "Prozess nicht mehr vorhanden", lauf_id),
             )
         aufgeraeumt += 1
     return aufgeraeumt

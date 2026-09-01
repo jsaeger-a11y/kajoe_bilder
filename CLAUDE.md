@@ -53,7 +53,8 @@ Ports werden hier eingetragen, bevor sie belegt werden.
 | 4 | Verarbeitung aus der Oberfläche anstoßen | **fertig** |
 | 5 | Karte (GPS) | **fertig** |
 | 6 | Jahresfreischaltung je Benutzer | **fertig** |
-| 7 | Cloudflare Tunnel | offen |
+| 7 | Aufräumen und Systempflege automatisieren | **fertig** (bis auf `root`) |
+| 8 | Cloudflare Tunnel | offen |
 
 Die Nummern folgen den Auftragsdateien in `docs/`. Gegenüber der ursprünglichen
 Planung ist eine Phase dazugekommen – das Anstoßen der Verarbeitung aus der
@@ -118,6 +119,7 @@ gilt, ist offen und wird bei der nächsten Messung geprüft.
 ├── ingest/                  Phase 1: Einlesen, EXIF, Ableitungen
 ├── tools/                   sicherung.sh, migrieren.sh, bestand.py, status.sh
 ├── systemd/                 Kopien der Dienst- und Timer-Dateien
+├── betrieb/                 Kopien der Dateien, die als root nach /etc gehören
 ├── sicherung/               pg_dump, 14 Tage – nicht im Repository
 ├── web/                     Phase 2+: Next.js
 └── docs/                    Anforderungen, Betrieb
@@ -351,6 +353,8 @@ sieht, sammelt und lädt herunter. Die Prüfung steht in **jeder** Seite, **jede
 Server Action und **jeder** Route – ein ausgeblendeter Knopf ist keine Prüfung, ein
 altes Lesezeichen käme sonst durch.
 
+Eine Sicherheitsregel, die man einsetzen kann, kann man auch vergessen. Bedingungen, die den Zugriff einschränken, werden nicht als Konstante exportiert, sondern nur über eine Funktion herausgegeben, die die Sicht des Benutzers verlangt. Dann meldet der Übersetzer jede Stelle, statt dass jemand sie suchen muss – und eine neue Abfrage kann sie nicht auslassen.
+
 **Benutzer werden abgeschaltet, nicht gelöscht** (`aktiv`), sonst verwaisen ihre
 Listen.
 
@@ -389,6 +393,47 @@ offen, ob am Ende doch jemand durchkam. Hinter dem Tunnel kommt die Adresse aus
 
 **Sammelpakete im Datenstrom erzeugen, nicht im Speicher bauen**, mit Obergrenze je
 Paket. Zweihundert Vollbilder sind gut ein Gigabyte.
+
+### Automatisch löschen nur mit zwei Sicherungen
+
+Der Aufräumlauf ist der **einzige Vorgang im System, der Dateien wirklich
+entfernt**. Seit Phase 7 stößt ihn ein Timer täglich um 03:20 UTC an – nach
+der Sicherung um 03:00, damit der Dump von heute Nacht noch den Stand vor dem
+Löschen enthält.
+
+Dazu gehören zwei Dinge, die nichts kosten:
+
+**Der Probelauf ist die Vorgabe.** `AUFRAEUMEN_SCHARF` steht in der `.env`,
+nicht in der Unit und nicht im Skript: die Umstellung auf scharf soll eine
+Zeile sein und kein `daemon-reload`, den jemand vergisst. Fehlt die Zeile,
+wird nur gezählt.
+
+**Eine Obergrenze je Lauf** (2.500 Dateien, `HOECHSTENS_DATEIEN` in
+`ingest/aufraeumen.py`). Darüber bricht der Lauf ab und meldet, statt zu
+arbeiten – gezählt wird vollständig, bevor die erste Datei fällt. Mehr als
+2.500 auf einmal ist kein Betrieb, sondern ein Versehen, und Dateien kommen
+nicht zurück.
+
+**Und jeder Lauf wird protokolliert** (`aufraeumlauf`, in `tools/status.sh`).
+Ein Vorgang, der unbeobachtet löscht, ist derselbe Fall wie eine ungetestete
+Sicherung.
+
+### Ein Neustart macht jede Prozessnummer wertlos
+
+`unattended-upgrades` startet den Rechner um 03:45 UTC neu, wenn ein
+Sicherheitsstand es verlangt – und kann dabei einen laufenden Ingest treffen.
+
+Wer sich merkt, welcher Prozess einen Lauf führt, darf **nicht** allein die
+Prozessnummer prüfen. Nach einem Neustart beginnt deren Vergabe wieder bei 1;
+eine Zeile mit `pid = 1473239` trifft dann irgendwann auf einen völlig anderen,
+lebenden Prozess und gilt für immer als „läuft noch". Der Rechnername ist
+derselbe, also greift auch der zweite Riegel nicht. Die Folge wäre still und
+vollständig: jeder weitere Anstoß wird abgewiesen, in der Oberfläche steht ein
+Vorgang, den es nicht gibt, und die Verarbeitung ist tot.
+
+Deshalb steht in `verarbeitung.boot_kennung` die Kennung des Systemstarts
+(`/proc/sys/kernel/random/boot_id`, Migration 008). Weicht sie ab, ist der
+Prozess mit Sicherheit weg, und die Nummer wird gar nicht erst befragt.
 
 ### Sicherung
 
@@ -481,6 +526,17 @@ Täglicher `pg_dump` ab Phase 0, nicht später.
   weiterhin 30 Punkte groß und auf dem Telefon nicht zu treffen. Ein
   zusätzlicher Vorfahre reicht – aber man muss es nachmessen, im Quelltext
   sieht die Regel richtig aus
+- **Eine systemd-Anweisung im falschen Abschnitt wird stillschweigend
+  verworfen.** `StartLimitIntervalSec` gehört in `[Unit]`, nicht in
+  `[Service]`; die einzige Spur ist eine Zeile „Unknown key … ignoring" im
+  Journal, die niemand liest. Die Unit lädt, der Dienst startet, alles sieht
+  richtig aus – nur die Wirkung fehlt. Gegengeprüft wird mit
+  `systemctl --user show <einheit> -p <Anweisung>`, nicht am Dateiinhalt
+- **Eine apt-Konfigurationsgruppe ergänzt die Liste, sie ersetzt sie nicht.**
+  Wer `Unattended-Upgrade::Allowed-Origins { … };` in eine eigene Datei
+  schreibt, hängt seine Einträge an die vorhandenen an – die Vorgabe bleibt
+  drin. Erst `#clear <Name>;` davor räumt sie weg. Nachsehen lässt es sich
+  ohne root und ohne Aufspielen: `apt-config dump -c <datei>`
 - **`const enum` aus einer Bibliothek nie im Code verwenden.** TypeScript löscht die
   Aufzählung beim Übersetzen; zur Laufzeit ist das Objekt leer, und was ankommt, ist
   `undefined`. Mit `isolatedModules` – das Next voraussetzt – bricht `tsc` immerhin ab,

@@ -136,6 +136,109 @@ if [ "$LAEUFT" = ja ] && [ -r "$PROJEKT/.env" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+titel "Aufraeumen"
+
+# Der Aufraeumlauf ist der einzige Vorgang, der Dateien wirklich entfernt.
+# Solange er von Hand lief, sah der Bericht, wer ihn anstiess. Ein Timer stoesst
+# ihn nachts an, und dann sieht ihn niemand – deshalb stehen die letzten Laeufe
+# hier. Ein Vorgang, der unbeobachtet loescht, ist derselbe Fall wie eine
+# ungetestete Sicherung.
+
+if [ "$LAEUFT" != ja ] || [ ! -r "$PROJEKT/.env" ]; then
+    echo "  uebersprungen – Container laeuft nicht oder .env fehlt"
+else
+    set -a; . "$PROJEKT/.env"; set +a
+
+    SCHARF="${AUFRAEUMEN_SCHARF:-0}"
+    if [ "$SCHARF" = "1" ]; then
+        printf '  %-14s %s\n' "Modus" "SCHARF – der Timer entfernt Dateien wirklich"
+    else
+        printf '  %-14s %s\n' "Modus" \
+               "Probelauf – es wird nur gezaehlt (AUFRAEUMEN_SCHARF=1 schaltet scharf)"
+    fi
+
+    LAEUFE=$(docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$CONTAINER" \
+        psql -qAt -F$'\t' -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+            SELECT to_char(begonnen_am, 'YYYY-MM-DD HH24:MI'),
+                   modus, ausloeser, coalesce(ausgang, 'offen'),
+                   sitzungen_faellig, versuche_faellig,
+                   coalesce(zeilen_faellig::text, '-'),
+                   coalesce(dateien_faellig::text, '-'),
+                   coalesce(round(bytes_faellig / 1048576.0)::text || ' MB', '-'),
+                   coalesce(bemerkung, '')
+              FROM aufraeumlauf ORDER BY begonnen_am DESC LIMIT 5;" 2>/dev/null)
+
+    if [ -z "$LAEUFE" ]; then
+        echo "  noch kein Lauf protokolliert"
+    else
+        printf '  %-16s %-7s %-6s %-7s %6s %6s %6s %6s %9s\n' \
+               "begonnen" "Modus" "durch" "Ausgang" "Sitz." "Versu." "Zeilen" "Datei." "Platz"
+        while IFS=$'\t' read -r wann modus durch ausgang sitz versu zeilen dateien platz bemerkung; do
+            printf '  %-16s %-7s %-6s %-7s %6s %6s %6s %6s %9s\n' \
+                   "$wann" "$modus" "$durch" "$ausgang" "$sitz" "$versu" "$zeilen" "$dateien" "$platz"
+            [ -n "$bemerkung" ] && printf '  %-16s %s\n' "" "$bemerkung"
+        done <<< "$LAEUFE"
+        echo "  Die Zahlen sagen, was GEFUNDEN wurde; ob es wegkam, sagt die Spalte Modus."
+    fi
+
+    # Ein Ausgang, der nie gesetzt wurde, heisst: der Prozess ist gestorben.
+    OFFEN=$(docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$CONTAINER" \
+        psql -qAt -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+            SELECT count(*) FROM aufraeumlauf
+             WHERE ausgang IS NULL AND begonnen_am < now() - interval '2 hours';" 2>/dev/null)
+    [ "${OFFEN:-0}" -gt 0 ] && echo "  ACHTUNG: $OFFEN Lauf/Laeufe ohne Ausgang – abgestuerzt?"
+
+    GRENZE=$(docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$CONTAINER" \
+        psql -qAt -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+            SELECT count(*) FROM aufraeumlauf
+             WHERE ausgang = 'grenze' AND begonnen_am > now() - interval '7 days';" 2>/dev/null)
+    [ "${GRENZE:-0}" -gt 0 ] && \
+        echo "  ACHTUNG: $GRENZE Lauf/Laeufe der letzten Woche an der Obergrenze abgebrochen"
+fi
+
+if systemctl --user list-unit-files kajoe-aufraeumen.timer >/dev/null 2>&1; then
+    printf '  %-14s %s / %s\n' "Timer" \
+        "$(systemctl --user is-enabled kajoe-aufraeumen.timer 2>&1)" \
+        "$(systemctl --user is-active  kajoe-aufraeumen.timer 2>&1)"
+    systemctl --user list-timers --all kajoe-aufraeumen.timer --no-pager 2>/dev/null \
+        | sed -n '2p' | sed 's/^/  naechster Lauf: /'
+else
+    echo "  Timer        nicht eingerichtet – siehe systemd/LIESMICH.md"
+fi
+
+# ---------------------------------------------------------------------------
+titel "Systempflege"
+
+if dpkg -s unattended-upgrades >/dev/null 2>&1; then
+    printf '  %-24s %s\n' "unattended-upgrades" \
+        "$(systemctl is-enabled unattended-upgrades.service 2>&1) / $(systemctl is-active unattended-upgrades.service 2>&1)"
+    NEUSTARTZEIT=$(apt-config dump 2>/dev/null \
+        | sed -n 's/^Unattended-Upgrade::Automatic-Reboot-Time "\(.*\)";$/\1/p')
+    AUTONEUSTART=$(apt-config dump 2>/dev/null \
+        | sed -n 's/^Unattended-Upgrade::Automatic-Reboot "\(.*\)";$/\1/p')
+    printf '  %-24s %s\n' "automatischer Neustart" \
+        "${AUTONEUSTART:-nicht gesetzt (= aus)}${NEUSTARTZEIT:+ um $NEUSTARTZEIT}"
+    systemctl list-timers --all apt-daily-upgrade.timer --no-pager 2>/dev/null \
+        | sed -n '2p' | sed 's/^/  naechste Pruefung: /'
+else
+    echo "  unattended-upgrades ist nicht installiert"
+fi
+
+# WANN der Neustart faellig wurde, steht hier bewusst NICHT: die Datei wird bei
+# JEDEM neuen Kernel neu angefasst, ihre Zeit springt also Monat fuer Monat auf
+# heute, auch wenn seit einem halben Jahr niemand neu gestartet hat. Wer das
+# anzeigen will, braucht eine eigene Erstsichtung. Hier genuegt das OB.
+if [ -f /var/run/reboot-required ]; then
+    echo "  ACHTUNG: ein Neustart steht aus"
+    [ -r /var/run/reboot-required.pkgs ] && \
+        sed 's/^/    wegen: /' /var/run/reboot-required.pkgs | sort -u | head -5
+else
+    echo "  kein Neustart ausstehend"
+fi
+printf '  %-24s %s\n' "laeuft seit" "$(uptime -p 2>/dev/null || true)"
+printf '  %-24s %s\n' "laufender Kern" "$(uname -r)"
+
+# ---------------------------------------------------------------------------
 titel "Plattenplatz"
 
 df -h --output=target,size,used,avail,pcent / "$DATEN" 2>/dev/null \

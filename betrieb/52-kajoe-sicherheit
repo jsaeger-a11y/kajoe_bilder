@@ -1,0 +1,49 @@
+// 52-kajoe-sicherheit – gehoert nach /etc/apt/apt.conf.d/52-kajoe-sicherheit
+//
+// Eine EIGENE Datei und keine Aenderung an 50unattended-upgrades: die
+// Stockdatei ist eine Konfigurationsdatei des Pakets. Wer sie bearbeitet,
+// bekommt beim naechsten Paketwechsel eine Rueckfrage, welche Fassung gelten
+// soll – und beantwortet sie irgendwann falsch. Dateien in apt.conf.d werden
+// in Namensreihenfolge gelesen, 52 kommt nach 50.
+//
+// Aufspielen und pruefen: siehe betrieb/LIESMICH.md.
+
+// --- Nur Sicherheitsquellen ------------------------------------------------
+//
+// #clear ist noetig und keine Zierde. Eine Gruppe in einer apt-Konfiguration
+// ERGAENZT die vorhandene Liste, sie ersetzt sie nicht. Ohne diese Zeile
+// staende die Vorgabe aus 50unattended-upgrades weiter drin – unter anderem
+// "${distro_id}:${distro_codename}", die Veroeffentlichungsquelle, die eben
+// keine Sicherheitsquelle ist. Man sieht der Datei nicht an, dass sie nichts
+// bewirkt; nur `apt-config dump` sagt es.
+#clear Unattended-Upgrade::Allowed-Origins;
+
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-security";
+    // Extended Security Maintenance. Existiert nicht in jedem Fall; wenn
+    // vorhanden, gehoeren die Sicherheitsstaende von dort dazu.
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+};
+
+// --- Neustart, wenn einer noetig ist ---------------------------------------
+//
+// Sicherheitsstaende, die einen Neustart brauchen und keinen bekommen, sind
+// eingespielt und wirkungslos: der alte Kern laeuft weiter. Das faellt nicht
+// auf, weil `apt` zufrieden ist.
+//
+// 03:45 – nach der Datenbanksicherung (03:00) und nach dem Aufraeumlauf
+// (03:20), beide als Benutzertimer. Die Systemzeit ist UTC, also ist 03:45
+// hier auch 03:45 UTC.
+//
+// WithUsers "true": auch dann neu starten, wenn jemand angemeldet ist. Eine
+// offene SSH-Sitzung, die jemand vor Wochen vergessen hat, darf einen
+// faelligen Neustart nicht auf Dauer verhindern.
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Automatic-Reboot-Time "03:45";
+
+// Aufgeraeumt wird auch: sonst laeuft /boot mit alten Kernen voll, und dann
+// scheitert der naechste Sicherheitsstand am Platz.
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-New-Unused-Dependencies "true";

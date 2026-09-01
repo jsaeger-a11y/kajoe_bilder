@@ -203,7 +203,8 @@ zweistufig, mit 30 Tagen Frist. Bilder in einer Auswahlliste bleiben verschont.
 | 4 | Verarbeitung aus der Oberfläche anstoßen | fertig |
 | 5 | Karte | fertig |
 | 6 | Jahresfreischaltung je Benutzer | fertig |
-| 7 | Cloudflare Tunnel | offen |
+| 7 | Aufräumen und Systempflege automatisieren | fertig (bis auf root) |
+| 8 | Cloudflare Tunnel | offen |
 
 ---
 

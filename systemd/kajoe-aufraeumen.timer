@@ -1,0 +1,24 @@
+# Taeglich um 03:20 UTC – NACH der Sicherung, nicht davor.
+#
+# Die Sicherung laeuft um 03:00 (plus bis zu 300 s Streuung, also spaetestens
+# 03:05) und dauert Sekunden. Um 03:20 enthaelt der Dump von heute Nacht damit
+# noch den Stand VOR dem Loeschen. Andersherum waere die letzte Sicherung die
+# erste ohne die Zeilen, die gerade weggeraeumt wurden.
+#
+# Die Systemzeit ist UTC (siehe CLAUDE.md), 03:20 ist hier also auch 03:20 UTC.
+
+[Unit]
+Description=kajoe_bilder – Aufraeumlauf taeglich um 03:20
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+# Verpasste Laeufe nachholen: der Rechner kann um 03:20 aus gewesen sein, und
+# 30 Tage alte Vormerkungen werden nicht juenger.
+Persistent=true
+# Nicht alle Timer auf dem Rechner gleichzeitig losschicken. Klein genug, dass
+# der Abstand zur Sicherung erhalten bleibt.
+RandomizedDelaySec=120
+Unit=kajoe-aufraeumen.service
+
+[Install]
+WantedBy=timers.target
