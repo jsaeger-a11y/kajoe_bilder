@@ -560,3 +560,5 @@ Täglicher `pg_dump` ab Phase 0, nicht später.
   `undefined`. Mit `isolatedModules` – das Next voraussetzt – bricht `tsc` immerhin ab,
   sonst liefe es still ins Leere. Stattdessen den Zahlenwert schreiben, mit der
   Begründung daneben (so in `web/src/lib/passwort.ts` bei argon2id).
+
+Ein Prüfwerkzeug hat genau eine richtige Aufrufart. tools/nachneustart.sh prüfte unter sudo die Benutzerangaben von root und meldete acht Fehler, die keine waren – während es ohne sudo einen Wert schuldig blieb und ausgerechnet den falschen Aufruf empfahl. Wer dreimal „8 Fehler" bei lauter Häkchen liest, sieht beim vierten Mal nicht mehr hin, und dann fällt der echte neunte durch. Werkzeuge, die erhöhte Rechte für einen Einzelwert brauchen, holen sich diesen selbst, statt insgesamt als root zu laufen.
