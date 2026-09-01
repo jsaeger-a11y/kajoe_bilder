@@ -9,3 +9,6 @@ __pycache__/
 # Datenbanksicherungen liegen im Projektverzeichnis, gehoeren aber nicht
 # ins Repository.
 sicherung/
+
+# Gemerkte Zaehlerstaende von tools/nachneustart.sh
+.zustand/

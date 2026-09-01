@@ -91,8 +91,17 @@ Einmal **vor** einem geplanten Neustart aufrufen, damit der Zähler für
 `Unsafe Shutdowns` einen Vergleichswert hat:
 
 ```bash
-sudo tools/nachneustart.sh --merken
+tools/nachneustart.sh --merken
 ```
+
+**Ohne `sudo`, auch für `--merken`.** Fast alles darin ist an den Benutzer
+gebunden – Linger, die Benutzerdienste, die Gruppen `render` und `video`; als
+`root` sind das andere Antworten, und der Bericht zeigte acht Fehler, die keine
+sind. Den einen Wert, der wirklich Rootrechte braucht (`Unsafe Shutdowns` aus
+SMART), holt sich das Skript selbst per `sudo` und fragt dabei nach dem
+Passwort. Wer es trotzdem unter `sudo` startet, bekommt eine Meldung und keinen
+Prüflauf. Der gemerkte Zählerstand liegt in `.zustand/` im Projekt, damit er
+nicht davon abhängt, wer das Skript aufgerufen hat.
 
 ---
 

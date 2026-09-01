@@ -11,18 +11,32 @@
 # Nur lesend. Aufruf jederzeit, sinnvoll aber direkt nach einem Neustart.
 #
 #   tools/nachneustart.sh            pruefen und berichten
-#   sudo tools/nachneustart.sh --merken   Zaehlerstand vor dem Neustart merken
+#   tools/nachneustart.sh --merken   dabei den Zaehlerstand merken
 #
-# `Unsafe Shutdowns` liest nur root (SMART). Ohne root sagt der Bericht das,
-# statt die Zeile wegzulassen – eine Pruefung, die stillschweigend ausfaellt,
-# ist schlimmer als keine.
+# ES GIBT NUR EINEN RICHTIGEN AUFRUF, UND DER IST OHNE sudo.
+#
+# Fast alles hier ist an den Benutzer gebunden: `loginctl show-user`,
+# `systemctl --user`, die Gruppenzugehoerigkeit. Unter `sudo` beantwortet das
+# alles root – und root hat keinen Linger, keine Benutzerdienste und weder
+# `render` noch `video`. Der Bericht zeigte dann acht rote Kreuze, von denen
+# keines ein Fehler ist. Ein Pruefwerkzeug, das im falschen Aufruf Alarm
+# schlaegt, bringt einem irgendwann bei, den Alarm zu ueberlesen.
+#
+# Der eine Wert, der wirklich Rootrechte braucht – `Unsafe Shutdowns` aus
+# SMART –, wird deshalb vom Skript selbst per `sudo` geholt, fuer diesen einen
+# Aufruf. Wer das ganze Skript unter `sudo` startet, bekommt eine Meldung und
+# keinen Prueflauf.
 
 set -uo pipefail
 
 PROJEKT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATEN=/data/kajoe_bilder
 CONTAINER=kajoe_bilder_db
-ZUSTAND="${XDG_STATE_HOME:-$HOME/.local/state}/kajoe_bilder"
+
+# Der gemerkte Zaehlerstand liegt im Projekt und nicht unter $HOME: dann haengt
+# er nicht daran, wer das Skript aufgerufen hat, und liegt neben allem anderen,
+# was zu diesem Projekt gehoert. `.zustand/` steht in der .gitignore.
+ZUSTAND="$PROJEKT/.zustand"
 MERKDATEI="$ZUSTAND/unsafe-shutdowns"
 
 titel() { printf '\n\033[1m%s\033[0m\n' "$1"; }
@@ -34,6 +48,27 @@ OFFEN=0
 
 MERKEN=nein
 [ "${1:-}" = "--merken" ] && MERKEN=ja
+
+# --- Als root? Dann gar nicht erst anfangen -------------------------------
+if [ "$(id -u)" -eq 0 ]; then
+    NAME="${SUDO_USER:-<benutzer>}"
+    cat >&2 <<ENDE
+tools/nachneustart.sh gehoert NICHT unter sudo.
+
+Fast alles hier ist an den Benutzer gebunden – Linger, die Benutzerdienste,
+die Gruppen render und video. Als root sind das alles andere Antworten, und
+der Bericht zeigte acht Fehler, die keine sind.
+
+Bitte so aufrufen:
+
+    tools/nachneustart.sh${1:+ $1}
+
+Das Skript holt sich den einen Wert, der Rootrechte braucht (Unsafe Shutdowns
+aus SMART), selbst per sudo und fragt dabei gegebenenfalls nach dem Passwort.
+ENDE
+    [ "$NAME" != "<benutzer>" ] && echo "(Aufgerufen ueber sudo von $NAME.)" >&2
+    exit 2
+fi
 
 # ---------------------------------------------------------------------------
 titel "Neustart"
@@ -192,7 +227,41 @@ fi
 titel "Sauber heruntergefahren?"
 # NVMe zaehlt mit, wie oft der Strom weg war, ohne dass die Platte Bescheid
 # wusste. Steigt der Wert ueber einen Neustart, war es kein sauberer.
-if AUSG=$(smartctl -A /dev/nvme0 2>&1) && WERT=$(grep -i 'Unsafe Shutdowns' <<< "$AUSG" | tr -dc '0-9'); then
+# SMART liest nur root – das ist der EINZIGE Wert hier, der das braucht, und
+# deshalb holt das Skript ihn sich fuer diesen einen Aufruf selbst. Erst ohne
+# Rueckfrage versuchen; nur wenn ein Terminal da ist, darf sudo nach dem
+# Passwort fragen – aus einem Dienst heraus wartete eine Rueckfrage ewig.
+#
+# Rueckgabe ueber die Ausgabe und nicht ueber eine Variable: die Funktion
+# laeuft in einer Ersatzumgebung ($(...)), eine Zuweisung darin kaeme draussen
+# nie an. Und der GRUND wird mitgeliefert – "geht nicht" ohne Grund schickt
+# einen auf die Suche.
+smart_lesen() {
+    local ausg w
+    [ -e /dev/nvme0 ] || { echo "weg:keine NVMe unter /dev/nvme0 – nichts zu zaehlen"; return; }
+    command -v smartctl >/dev/null 2>&1 \
+        || { echo "weg:smartctl ist nicht installiert (Paket smartmontools)"; return; }
+
+    if ausg=$(sudo -n smartctl -A /dev/nvme0 2>/dev/null); then
+        :
+    elif [ -t 0 ]; then
+        printf '  SMART braucht root – sudo fragt jetzt nach dem Passwort.\n' >&2
+        ausg=$(sudo smartctl -A /dev/nvme0 2>/dev/null) \
+            || { echo "weg:sudo hat den Zugriff auf SMART nicht freigegeben"; return; }
+    else
+        echo "weg:SMART braucht root, und hier ist kein Terminal fuer die sudo-Rueckfrage"
+        return
+    fi
+
+    w=$(grep -i 'Unsafe Shutdowns' <<< "$ausg" | tr -dc '0-9')
+    [ -n "$w" ] && echo "ok:$w" || echo "weg:smartctl nennt keinen Zaehler 'Unsafe Shutdowns'"
+}
+
+ANTWORT=$(smart_lesen)
+WERT=""
+[ "${ANTWORT%%:*}" = ok ] && WERT="${ANTWORT#ok:}"
+
+if [ -n "$WERT" ]; then
     ALT=""
     [ -r "$MERKDATEI" ] && ALT=$(cat "$MERKDATEI")
     if [ -n "$ALT" ]; then
@@ -200,14 +269,14 @@ if AUSG=$(smartctl -A /dev/nvme0 2>&1) && WERT=$(grep -i 'Unsafe Shutdowns' <<< 
             && ok "Unsafe Shutdowns" "$WERT – unveraendert gegenueber $ALT" \
             || weh "Unsafe Shutdowns" "$WERT, vorher $ALT – kein sauberes Herunterfahren"
     else
-        huh "Unsafe Shutdowns" "$WERT (kein Vergleichswert; vorher --merken aufrufen)"
+        ok "Unsafe Shutdowns" "$WERT (noch kein Vergleichswert – --merken legt einen an)"
     fi
     if [ "$MERKEN" = ja ]; then
         mkdir -p "$ZUSTAND" && printf '%s' "$WERT" > "$MERKDATEI"
-        echo "  gemerkt: $WERT in $MERKDATEI"
+        echo "  gemerkt: $WERT in ${MERKDATEI#"$PROJEKT/"}"
     fi
 else
-    huh "Unsafe Shutdowns" "nur als root lesbar – 'sudo tools/nachneustart.sh' aufrufen"
+    huh "Unsafe Shutdowns" "${ANTWORT#weg:}"
 fi
 
 # ---------------------------------------------------------------------------
