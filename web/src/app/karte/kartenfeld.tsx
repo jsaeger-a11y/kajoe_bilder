@@ -33,6 +33,8 @@ interface Gruppe {
   anzahl: number;
   beispiel: number;
   rahmen: Rahmen;
+  /** `<stufe>:<zeile>:<spalte>` – vom Server berechnet, hier nur weitergereicht. */
+  zelle: string;
 }
 
 interface Aufnahme {
@@ -215,6 +217,16 @@ export default function Kartenfeld({
           zIndexOffset: -Math.round(Math.min(10, Math.log2(g.anzahl)) * 100),
         });
 
+        /*
+          Ein Klick oeffnet eine Blase mit ZWEI Wegen: hineinzoomen oder die
+          Aufnahmen in der Galerie ansehen.
+
+          Bis Phase 7 zoomte der Klick unmittelbar. Das war einen Griff
+          kuerzer, liess aber keinen Platz fuer den zweiten Weg – und ein
+          Weg, den man nicht sieht, ist keiner. Ausserdem oeffnen einzelne
+          Aufnahmen schon immer eine Blase; so verhalten sich beide gleich.
+          Wer nur zoomen will, hat weiterhin den Doppelklick auf die Karte.
+        */
         marke.on("click", () => {
           if (!karte) return;
           const rahmen = L.latLngBounds(
@@ -226,24 +238,44 @@ export default function Kartenfeld({
             Ausdehnung der Gruppe gerade ins Bild passt? Liegt die hoeher als
             die jetzige, zerfaellt die Gruppe beim Hineinzoomen. Liegt sie
             nicht hoeher, liegen die Aufnahmen so dicht beieinander, dass die
-            Karte sie nicht auseinanderziehen kann – dann wird das gesagt,
-            statt einen Klick ins Leere zu machen.
+            Karte sie nicht auseinanderziehen kann.
           */
           const ziel = karte.getBoundsZoom(rahmen, false, L.point(30, 30));
-          if (ziel > karte.getZoom()) {
-            karte.flyToBounds(rahmen, { padding: [30, 30], maxZoom: zoomMax, duration: 0.6 });
-            return;
-          }
+          const teilbar = ziel > karte.getZoom();
+
+          const werte = new URLSearchParams(abfrageRef.current);
+          werte.set("zelle", g.zelle);
+          const galerie = `/galerie?${werte.toString()}`;
+
           marke
             .bindPopup(
-              bildblase(
-                g.beispiel,
-                `<b>${zahltext(g.anzahl)} Aufnahmen</b> an nahezu derselben Stelle.
-                 Weiter zerfällt diese Gruppe nicht.`,
-              ),
-              { maxWidth: 280 },
+              `<div class="kartenblase">
+                 <a href="${galerie}"><img src="/datei/${g.beispiel}/vorschau" alt=""
+                    width="112" height="112"></a>
+                 <div>
+                   <b>${zahltext(g.anzahl)} Aufnahmen</b>${teilbar
+                     ? ""
+                     : " an nahezu derselben Stelle. Weiter zerfällt diese Gruppe nicht."}
+                   <div class="blasenknoepfe">
+                     ${teilbar ? '<button type="button" data-zoomen="1">Hineinzoomen</button>' : ""}
+                     <a class="haupt" href="${galerie}">In der Galerie zeigen</a>
+                   </div>
+                 </div>
+               </div>`,
+              { maxWidth: 300 },
             )
             .openPopup();
+
+          // Der Knopf sitzt im Markup der Blase; Leaflet baut sie erst beim
+          // Oeffnen. Deshalb wird er hier und nicht vorher angebunden.
+          const blase = marke.getPopup()?.getElement();
+          blase?.querySelector<HTMLButtonElement>("[data-zoomen]")?.addEventListener(
+            "click",
+            () => {
+              marke.closePopup();
+              karte?.flyToBounds(rahmen, { padding: [30, 30], maxZoom: zoomMax, duration: 0.6 });
+            },
+          );
         });
         return marke;
       }

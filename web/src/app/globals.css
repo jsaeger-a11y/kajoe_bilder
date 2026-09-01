@@ -399,3 +399,17 @@ main.weit { max-width: 78rem; }
 .jahrekaesten { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; margin: .25rem 0 .5rem; }
 
 .klein-verweis { font-size: .85rem; white-space: nowrap; }
+
+/* --- Knoepfe in einer Kartenblase --------------------------------------- */
+
+.blasenknoepfe { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+.blasenknoepfe button,
+.blasenknoepfe a, .blasenknoepfe a:visited {
+  display: inline-flex; align-items: center; min-height: 2.25rem;
+  padding: .35rem .7rem; margin: 0; border-radius: 6px; font-size: .85rem;
+  border: 1px solid var(--rand); background: var(--feld); color: var(--schrift);
+  text-decoration: none; cursor: pointer;
+}
+.blasenknoepfe a.haupt {
+  background: var(--betont); border-color: var(--betont); color: var(--grund);
+}

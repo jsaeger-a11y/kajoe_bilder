@@ -53,8 +53,9 @@ Ports werden hier eingetragen, bevor sie belegt werden.
 | 4 | Verarbeitung aus der Oberfläche anstoßen | **fertig** |
 | 5 | Karte (GPS) | **fertig** |
 | 6 | Jahresfreischaltung je Benutzer | **fertig** |
-| 7 | Aufräumen und Systempflege automatisieren | **fertig** (bis auf `root`) |
-| 8 | Cloudflare Tunnel | offen |
+| 7 | Aufräumen und Systempflege automatisieren | **fertig** (Neustart steht aus) |
+| 8 | Mehrjahresfilter, von der Karte in die Galerie | **fertig** |
+| 9 | Cloudflare Tunnel | offen |
 
 Die Nummern folgen den Auftragsdateien in `docs/`. Gegenüber der ursprünglichen
 Planung ist eine Phase dazugekommen – das Anstoßen der Verarbeitung aus der
@@ -375,6 +376,15 @@ Durchgesetzt wird das in `web/src/lib/sichtbar.ts`, an **einer** Stelle, zusamme
 `/datei/…`: dort gehen die Bilder über die Leitung, und eine geratene Kennung darf
 kein Vorschaubild aus einem gesperrten Jahrgang liefern.
 
+**Freischaltung und Filter sehen sich ähnlich und sind es nicht.** Die
+Freischaltung sagt, was jemand **darf**, der Filter, was er gerade **sehen
+will**. Seit Phase 8 nimmt der Jahresfilter eine Aufzählung
+(`jahr=2022,2023,2025`); beide Bedingungen stehen mit UND nebeneinander, es
+entsteht also immer der Durchschnitt. Ein Jahr in der Adresse, das nicht
+freigeschaltet ist, liefert nichts – keine Fehlerseite, kein Sonderfall. Bei
+einem einzelnen Jahr fiele eine fehlende Prüfung sofort auf, bei einer
+Aufzählung mit einem unberechtigten Eintrag darin nicht.
+
 **In einer Auswahlliste bleiben gesperrte Bilder stehen** und kommen nach der
 Freischaltung wieder. Die Liste sagt aber, wie viele fehlen – „55 Bilder, davon 12
 derzeit nicht verfügbar". Still weglassen wäre das Schlimmste: man lädt ein Paket
@@ -526,6 +536,14 @@ Täglicher `pg_dump` ab Phase 0, nicht später.
   weiterhin 30 Punkte groß und auf dem Telefon nicht zu treffen. Ein
   zusätzlicher Vorfahre reicht – aber man muss es nachmessen, im Quelltext
   sieht die Regel richtig aus
+- **Zwei Rechenwege für dieselbe Menge laufen auseinander, auch wenn beide
+  richtig sind.** Der Sprung von einer Kartengruppe in die Galerie könnte den
+  Ausschnitt als Rechteck in Grad weitergeben – das Gitter der Karte liegt aber
+  in Mercator-Koordinaten, und heraus kämen 43 Punkte gegen 44 Bilder. Das
+  sieht aus wie ein Fehler und ist keiner, was das Suchen nicht kürzer macht.
+  Die Zellrechnung steht deshalb in `web/src/lib/zelle.ts`, und die Kennung der
+  Zelle berechnet die **Datenbank beim Gruppieren** und reicht sie durch – der
+  Browser rechnet gar nichts
 - **Eine systemd-Anweisung im falschen Abschnitt wird stillschweigend
   verworfen.** `StartLimitIntervalSec` gehört in `[Unit]`, nicht in
   `[Service]`; die einzige Spur ist eine Zeile „Unknown key … ignoring" im

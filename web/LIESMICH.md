@@ -923,3 +923,139 @@ Benutzerverwaltung; dieser hier ist der Rückweg, wenn niemand mehr hineinkommt 
 das erste Konto auch dort und nirgends sonst entsteht. Ein Jahr, das es im Bestand noch
 nicht gibt, wird angenommen und nur angemerkt: einen kommenden Jahrgang vorab
 freizuschalten ist sinnvoll.
+
+---
+
+# Mehrere Jahre filtern, von der Karte in die Galerie (Phase 8)
+
+## Der Jahresfilter nimmt mehrere Jahre
+
+`Filter.jahr` ist eine **Liste**, in der Adresse als `jahr=2022,2023,2025`. Leer
+heißt „alle", nicht „keines". Eine alte Adresse mit `jahr=2026` ergibt `[2026]`
+und funktioniert unverändert – es gibt Lesezeichen.
+
+In der Bedingung wird daraus `jahr = ANY($n::smallint[])`, in **derselben**
+`bedingung()` wie bisher. Galerie, Karte, Sammelauswahl und das Blättern in der
+Einzelansicht bekommen es damit ohne eigenes Zutun.
+
+Bedienung: die Jahreszeile schaltet jetzt um, statt zu ersetzen – ein Klick auf
+ein gewähltes Jahr nimmt es wieder heraus, „alle" ist der Rückweg. Es bleiben
+**Verweise**, keine Kästchen im HTML-Sinn: dieselbe Begründung wie beim
+Markieren in der Galerie (`src/lib/markierung.ts`) – was in der Adresse steht,
+überlebt jedes Blättern, und React setzt bei einem Kästchen nur das Attribut,
+nicht die tatsächliche Ankreuzung.
+
+Der **Monatsfilter** zählt jetzt über alle gewählten Jahre zusammen. Das ging
+schon immer in der Abfrage (Jahr und Monat sind dort unabhängig); nur die
+Anzeige kannte vorher genau ein Jahr.
+
+### Der Filter darf den Zugriff nie erweitern
+
+`sichtbar(sicht)` steuert bei einem eingeschränkten Konto bereits ein eigenes
+`jahr = ANY(...)` bei. Der Filter kommt mit **UND** daneben – es entsteht der
+Durchschnitt, nie die Vereinigung. Ein Jahr in der Adresse, das nicht
+freigeschaltet ist, liefert nichts; keine Fehlerseite, kein Sonderfall.
+
+Das ist die Stelle, an der eine Aufzählung gefährlicher ist als ein einzelnes
+Jahr: bei `jahr=2024` fällt eine fehlende Prüfung sofort auf, bei
+`jahr=2024,2025` mit nur einem erlaubten Eintrag nicht. Deshalb nachgemessen,
+mit einem Konto auf `{2025}`:
+
+| Adresse | Galerie | Karte | Soll |
+|---|---|---|---|
+| `jahr=2024,2025` | **1.884** | **1.801** | 1.884 / 1.801 (2025 allein) |
+| `jahr=2024` | 0 | 0 | 0 |
+| `jahr=2019,2020,2024` | 0 | 0 | 0 |
+| ohne Jahresfilter | 1.884 | 1.801 | 1.884 / 1.801 |
+
+Dieselbe Adresse als Verwalter: 5.128 und 4.807. Die Bildauslieferung wurde
+einzeln gegengeprüft – `/datei/<2024er>/vorschau` und `/ansicht` je **404**,
+`/bild/<2024er>` **404**, die 2025er Entsprechungen **200**.
+
+### Was geprüft wurde
+
+| | |
+|---|---|
+| `jahr=2022,2023,2025` | 6.814 = 2.629 + 2.301 + 1.884 |
+| Karte mit denselben Filtern | 6.364 = 2.555 + 2.008 + 1.801 (die mit Ort) |
+| `jahr=2022,2023,2025&monat=7` | 890 = 694 + 162 + 34 |
+| `jahr=2026` (alte Adresse) | 642, unverändert |
+| An- und Abwählen im Browser | 2022 → 2022,2025 → 2022,2023,2025 → Juli → −2022 = 196 |
+
+Unsinnige Eingaben führen zu keiner Fehlerseite, sondern zu keinem oder einem
+gekürzten Filter – alle mit **HTTP 200**:
+
+| Adresse | Ergebnis |
+|---|---|
+| `jahr=abc` | kein Jahresfilter |
+| `jahr=` | kein Jahresfilter |
+| `jahr=99999` | kein Jahresfilter (außerhalb 1900–2999) |
+| `jahr=2022,,` | nur 2022 |
+| `jahr=2022,abc,2025` | 2022 und 2025, 4.513 |
+
+## Von der Karte in die Galerie
+
+Ein Klick auf eine Gruppe öffnet eine Blase mit zwei Wegen: **Hineinzoomen**
+oder **In der Galerie zeigen**. Bis Phase 7 zoomte der Klick unmittelbar; das
+war einen Griff kürzer, ließ aber keinen Platz für den zweiten Weg – und ein
+Weg, den man nicht sieht, ist keiner. Einzelne Aufnahmen öffnen ohnehin schon
+immer eine Blase, so verhalten sich beide gleich. Bei einer Gruppe, die sich
+nicht weiter teilen lässt, fehlt der Zoomknopf; dort ist die Galerie der
+einzige Weg an die Bilder.
+
+**Nicht die Bildkennungen wandern mit.** Hinter einer Gruppe können über
+zweitausend Aufnahmen liegen, die passen in keine Adresse. Es wandert die
+Gitterzelle: `zelle=<stufe>:<zeile>:<spalte>`.
+
+### Eine Rechnung, nicht zwei
+
+`src/lib/zelle.ts` hält die Zellrechnung – Zellweite, die beiden SQL-Ausdrücke,
+das Einlesen der Kennung, die Bedingung und die Umkehrung zur Zellmitte. Karte
+**und** Galerie rechnen daraus.
+
+Das Gitter liegt in Mercator-Koordinaten. Ein Rechteck in Grad nachzubilden
+ergäbe einen leicht anderen Ausschnitt – und 43 Punkte auf der Karte gegen 44
+Bilder in der Galerie sieht aus wie ein Fehler, auch wenn beide für sich
+richtig rechnen.
+
+Noch eine Stufe sicherer: **die Zellkennung berechnet die Datenbank beim
+Gruppieren** und gibt sie mit der Gruppe heraus (`zeile`, `spalte` werden
+mitgelesen statt nur gruppiert). Der Browser reicht sie nur weiter. So kann die
+Galerie gar keinen anderen Ausschnitt meinen als die angeklickte Gruppe.
+
+`gps_status = 'ok'` steht **in** der Zellbedingung und nicht daneben: Zeilen mit
+`unplausibel` behalten ihre Koordinaten, sie sind nur als unbrauchbar erkannt.
+Auf der Karte sind sie nicht zu sehen, in der Galerie wären sie es sonst.
+
+### Was geprüft wurde
+
+Gruppe auf der Karte gegen Trefferzahl in der Galerie, jeweils dieselbe Zelle:
+
+| Stufe | Gruppe | Zelle | Galerie |
+|---|---|---|---|
+| 4 | 9.805 | `4:10:1` | **9.805** |
+| 8 | 8.507 | `8:161:25` | **8.507** |
+| 12 | 6.362 | `12:2590:403` | **6.362** |
+| 16 | 3.468 | `16:41442:6462` | **3.468** |
+| 19 | 2.120 | `19:331536:51701` | **2.120** |
+
+Zehn Zellen auf fünf Zoomstufen, jedes Mal auf den Punkt gleich.
+
+- Ausschnitt **plus Jahresfilter**: Zelle `12:2590:403` ergibt ohne Jahr 6.362,
+  mit `jahr=2025` 967 und mit `jahr=2024,2025` 2.468 – Karte und Galerie
+  jeweils identisch.
+- Die Gruppe mit **2.120**: Galerie zeigt 2.120, seitenweise (Seite 1 von 36).
+- **Zurück zur Karte**: Mitte und Zoomstufe stecken in der Zelle, es braucht
+  keine zusätzliche Angabe. `zellmitte()` ist die Umkehrung der
+  Mercator-Rechnung; ihr Ergebnis durch das Gitter zurückgeschickt ergibt
+  wieder dieselbe Zelle – auf Stufe 12 und auf Stufe 19 gegengeprüft.
+- **Neues Fenster** mit derselben Adresse: dieselbe Menge.
+- **Eingeschränktes Konto** auf `{2025}`, dieselbe Zelle `19:331536:51701`:
+  **281** statt 2.120 – genau die 2025er dieser Zelle laut Datenbank.
+- Blättern **innerhalb** des Ausschnitts: die Einzelansicht sagt „1 von 164"
+  statt „105 von 16.231", und die Nachbarverweise tragen die Zelle weiter.
+
+In der Galerie steht sichtbar, dass ein Kartenausschnitt filtert, mit dem Weg
+zurück zur Karte und einem „Ausschnitt aufheben". Dass Aufnahmen **ohne Ort**
+dabei nicht erscheinen, steht dabei – richtig, aber überraschend, wenn es
+niemand sagt.

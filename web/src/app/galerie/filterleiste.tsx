@@ -47,9 +47,36 @@ export default function Filterleiste({
 }) {
   const verweis = (aenderung: Partial<Filter>) => filterlink(pfad, filter, aenderung);
   const jahre = [...new Set(zeitraeume.map((z) => z.jahr))].sort((a, b) => b - a);
-  const monate = filter.jahr === null
-    ? []
-    : zeitraeume.filter((z) => z.jahr === filter.jahr).sort((a, b) => b.monat - a.monat);
+
+  /*
+    Ein Jahr an- oder abwaehlen. Kaestchen statt einer Auswahlliste: mehrere
+    Jahre nebeneinander sind der Zweck, und "2022 und 2025, aber nicht 2023"
+    laesst sich mit Kaestchen sagen und mit einer Liste nicht.
+
+    Es bleiben VERWEISE, keine Formularfelder – dieselbe Begruendung wie beim
+    Markieren in der Galerie (siehe src/lib/markierung.ts): was in der Adresse
+    steht, ueberlebt jedes Blaettern, und React setzt bei einem Kaestchen nur
+    das Attribut, nicht die tatsaechliche Ankreuzung.
+  */
+  const umschalten = (j: number): number[] =>
+    filter.jahr.includes(j)
+      ? filter.jahr.filter((x) => x !== j)
+      : [...filter.jahr, j].sort((a, b) => a - b);
+
+  /*
+    Monate ueber ALLE gewaehlten Jahre zusammengezaehlt. "Juli 2022, 2023 und
+    2025" ist eine sinnvolle Frage, und der Monatsfilter wirkt in der Abfrage
+    ohnehin unabhaengig vom Jahr. Ohne Jahresauswahl bleibt die Zeile weg –
+    zwoelf Monate ueber acht Jahrgaenge sind keine Auswahl, sondern eine Wand.
+  */
+  const monate = filter.jahr.length
+    ? [...zeitraeume
+         .filter((z) => filter.jahr.includes(z.jahr))
+         .reduce((karte, z) => karte.set(z.monat, (karte.get(z.monat) ?? 0) + z.anzahl),
+                 new Map<number, number>())]
+        .map(([monat, anzahl]) => ({ monat, anzahl }))
+        .sort((a, b) => b.monat - a.monat)
+    : [];
 
   const gefiltert = treffer < zahlen.gesamt;
 
@@ -69,14 +96,17 @@ export default function Filterleiste({
 
       <div className="filterzeile">
         <b>Jahr</b>
-        <Marke ziel={verweis({ jahr: null, monat: null })} text="alle"
-               gewaehlt={filter.jahr === null} />
+        <Marke ziel={verweis({ jahr: [], monat: null })} text="alle"
+               gewaehlt={filter.jahr.length === 0} />
         {jahre.map((j) => (
-          <Marke key={j} ziel={verweis({ jahr: j, monat: null })}
-                 text={String(j)} gewaehlt={filter.jahr === j}
+          <Marke key={j} ziel={verweis({ jahr: umschalten(j) })}
+                 text={String(j)} gewaehlt={filter.jahr.includes(j)}
                  anzahl={zeitraeume.filter((z) => z.jahr === j)
                    .reduce((s, z) => s + z.anzahl, 0)} />
         ))}
+        {filter.jahr.length > 1 ? (
+          <span className="leise">{filter.jahr.length} Jahrgänge gewählt</span>
+        ) : null}
       </div>
 
       {monate.length ? (

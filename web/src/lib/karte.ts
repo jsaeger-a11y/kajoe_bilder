@@ -22,27 +22,13 @@ import "server-only";
 import { abfrage, eineZeile } from "./db";
 import { bedingung, suchtext, type Filter } from "./galerie";
 import type { Sicht } from "./sichtbar";
+import {
+  ZOOM_MAX, ZOOM_MIN, spalteSql, zeileSql, zelleText, zellweite,
+} from "./zelle";
 
-/**
- * Zoomstufen. 2 zeigt die ganze Welt, 19 ist die feinste Stufe, fuer die es
- * OpenStreetMap-Kacheln gibt. Die Grenzen stehen hier und werden an die
- * Leaflet-Karte durchgereicht, damit Browser und Server nicht getrennt
- * voneinander entscheiden, wie weit hineingezoomt werden darf.
- */
-export const ZOOM_MIN = 2;
-export const ZOOM_MAX = 19;
-
-/**
- * Kantenlaenge einer Gitterzelle in Bildschirmpunkten.
- *
- * 72 Punkte sind etwas mehr als ein Markerdurchmesser (44 Punkte, die uebliche
- * Mindestgroesse fuer einen Fingertipp). Damit stehen die Marker auseinander,
- * ohne dass die Karte leer wirkt.
- */
-const ZELLE_PUNKTE = 72;
-
-/** Eine Kachel ist 256 Punkte breit – daraus ergibt sich der Massstab. */
-const KACHEL_PUNKTE = 256;
+// Die Zoomgrenzen kommen aus zelle.ts und werden hier nur weitergereicht:
+// Karte, Galerie und Browser sollen dieselben kennen.
+export { ZOOM_MAX, ZOOM_MIN };
 
 /**
  * Bis zu so vielen Aufnahmen im Ausschnitt wird nicht gruppiert, sondern jede
@@ -65,23 +51,6 @@ export const EINZELN_BIS = 150;
  */
 const HOECHSTENS_ZELLEN = 2000;
 
-/**
- * Kantenlaenge einer Zelle im Mercator-Bogenmass.
- *
- * Gerechnet wird NICHT in Grad. Ein Gitter aus gleichen Gradzahlen ist auf dem
- * Bildschirm kein Quadrat: bei 54 Grad Nord deckt ein Breitengrad rund
- * anderthalbmal so viele Bildpunkte ab wie ein Laengengrad, die Zellen waeren
- * also hochkant und die Gruppen wuerden senkrecht staerker zusammenfallen als
- * waagerecht. In Mercator-Koordinaten – genau denen, in denen die Karte
- * gezeichnet wird – ist die Zelle auf jeder Breite quadratisch.
- *
- * Die Welt ist auf Stufe z genau KACHEL_PUNKTE * 2^z Punkte breit und umfasst
- * 2*pi im Bogenmass. Daraus folgt die Umrechnung unmittelbar.
- */
-export function zellweite(zoom: number): number {
-  return (ZELLE_PUNKTE * 2 * Math.PI) / (KACHEL_PUNKTE * 2 ** zoom);
-}
-
 export interface Rahmen {
   sued: number;
   nord: number;
@@ -98,6 +67,14 @@ export interface Gruppe {
   beispiel: number;
   /** Tatsaechliche Ausdehnung der Gruppe – daraufhin zoomt der Klick. */
   rahmen: Rahmen;
+  /**
+   * `<stufe>:<zeile>:<spalte>` – der Weg in die Galerie.
+   *
+   * Berechnet hat die Kennung die Datenbank beim Gruppieren, nicht der
+   * Browser und nicht ein zweiter Rechenweg: so kann die Galerie gar keinen
+   * anderen Ausschnitt meinen als die Gruppe, die man angeklickt hat.
+   */
+  zelle: string;
 }
 
 export interface Aufnahme {
@@ -215,6 +192,8 @@ function kartenbedingung(filter: Filter, sicht: Sicht): { text: string; werte: u
 }
 
 interface Zellzeile {
+  zeile: string;
+  spalte: string;
   anzahl: number;
   lat: number;
   lon: number;
@@ -296,8 +275,13 @@ export async function ausschnitt(
     `lat BETWEEN $${n + 1} AND $${n + 2} AND lon BETWEEN $${n + 3} AND $${n + 4}`;
   const w = `$${n + 5}`;
 
+  // Zeile und Spalte werden MITGELESEN, nicht nur gruppiert: sie sind die
+  // Kennung der Zelle und wandern mit dem Klick in die Galerie. So kann dort
+  // gar kein anderer Ausschnitt gemeint sein als die angeklickte Gruppe.
   const zellen = await abfrage<Zellzeile>(
-    `SELECT count(*)::int              AS anzahl,
+    `SELECT ${zeileSql(w)}             AS zeile,
+            ${spalteSql(w)}            AS spalte,
+            count(*)::int              AS anzahl,
             avg(lat)                   AS lat,
             avg(lon)                   AS lon,
             min(lat)                   AS lat_min,
@@ -309,8 +293,7 @@ export async function ausschnitt(
             (count(*)     OVER ())::int AS zellen
        FROM bild
       WHERE ${b.text} AND ${imRahmen}
-      GROUP BY floor(ln(tan(pi()/4 + radians(lat)/2)) / ${w}),
-               floor(radians(lon) / ${w})
+      GROUP BY 1, 2
       ORDER BY anzahl DESC
       LIMIT ${HOECHSTENS_ZELLEN}`,
     werte,
@@ -346,6 +329,8 @@ export async function ausschnitt(
       anzahl: z.anzahl,
       beispiel: Number(z.beispiel),
       rahmen: { sued: z.lat_min, nord: z.lat_max, west: z.lon_min, ost: z.lon_max },
+      // floor() liefert numeric; der Treiber gibt das als Zeichenkette heraus.
+      zelle: zelleText({ stufe: zoom, zeile: Number(z.zeile), spalte: Number(z.spalte) }),
     });
   }
 

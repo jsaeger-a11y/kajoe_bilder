@@ -12,6 +12,7 @@ import "server-only";
 import { abfrage, eineZeile } from "./db";
 import { HOECHSTENS_JE_VORGANG } from "./rechte";
 import { sichtbar, type Bedingung, type Sicht } from "./sichtbar";
+import { zelleAusText, zelleText, zellbedingung, type Zelle } from "./zelle";
 
 /** Seitengroesse an EINER Stelle. Bei 922 Zeilen faellt sie nicht auf, bei 14.000 schon. */
 export const SEITENGROESSE = 60;
@@ -20,7 +21,12 @@ export const HERKUENFTE = ["iphone", "apple_sonstig", "fremd", "ohne_exif"] as c
 export const TYPEN = ["bild", "video"] as const;
 
 export interface Filter {
-  jahr: number | null;
+  /**
+   * Mehrere Jahre gleichzeitig, aufsteigend und ohne Doppel. Leer heisst
+   * "alle" – nicht "keines". In der Adresse als `jahr=2022,2023,2025`; eine
+   * alte Adresse mit `jahr=2026` bleibt gueltig und ergibt `[2026]`.
+   */
+  jahr: number[];
   monat: number | null;
   /** eine Herkunft oder "alle" */
   herkunft: string;
@@ -28,6 +34,8 @@ export interface Filter {
   typ: string;
   /** "mit", "ohne" oder "alle" */
   ort: string;
+  /** Eine Gitterzelle der Karte, aus `zelle=<stufe>:<zeile>:<spalte>`. */
+  zelle: Zelle | null;
   seite: number;
 }
 
@@ -36,7 +44,8 @@ export interface Filter {
  * Filter ist, zeigt die Galerie immer beide Zahlen: gefiltert und gesamt.
  */
 export const VORGABE: Filter = {
-  jahr: null, monat: null, herkunft: "iphone", typ: "alle", ort: "alle", seite: 1,
+  jahr: [], monat: null, herkunft: "iphone", typ: "alle", ort: "alle",
+  zelle: null, seite: 1,
 };
 
 type Suchwerte = Record<string, string | string[] | undefined>;
@@ -52,12 +61,29 @@ function zahl(wert: string | null, von: number, bis: number): number | null {
   return Number.isInteger(n) && n >= von && n <= bis ? n : null;
 }
 
+/**
+ * Jahre aus `jahr=2022,2023,2025` – oder aus `jahr=2026`.
+ *
+ * Was keine brauchbare Jahreszahl ist, faellt weg und fuehrt NICHT zu einer
+ * Fehlerseite: `jahr=abc` und `jahr=2022,,` und `jahr=99999` ergeben eine
+ * leere beziehungsweise gekuerzte Liste. Eine Adresse kommt aus einem
+ * Lesezeichen oder aus einer Hand, die sie getippt hat.
+ */
+function jahre(wert: string | null): number[] {
+  if (wert === null || wert === "") return [];
+  const gefunden = wert
+    .split(",")
+    .map((t) => zahl(t.trim(), 1900, 2999))
+    .filter((j): j is number => j !== null);
+  return [...new Set(gefunden)].sort((a, b) => a - b);
+}
+
 export function filterAusSuche(suche: Suchwerte): Filter {
   const herkunft = eins(suche.herkunft);
   const typ = eins(suche.typ);
   const ort = eins(suche.ort);
   return {
-    jahr: zahl(eins(suche.jahr), 1900, 2999),
+    jahr: jahre(eins(suche.jahr)),
     monat: zahl(eins(suche.monat), 1, 12),
     herkunft:
       herkunft === "alle" || (HERKUENFTE as readonly string[]).includes(herkunft ?? "")
@@ -65,6 +91,7 @@ export function filterAusSuche(suche: Suchwerte): Filter {
         : VORGABE.herkunft,
     typ: (TYPEN as readonly string[]).includes(typ ?? "") ? (typ as string) : "alle",
     ort: ort === "mit" || ort === "ohne" ? ort : "alle",
+    zelle: zelleAusText(eins(suche.zelle)),
     seite: zahl(eins(suche.seite), 1, 100000) ?? 1,
   };
 }
@@ -82,11 +109,12 @@ export function suchtext(
   const f = { ...filter, ...aenderung };
   // Seite 1 nur weglassen, wenn nicht ausdruecklich gesetzt.
   const teile: string[] = [];
-  if (f.jahr !== null) teile.push(`jahr=${f.jahr}`);
+  if (f.jahr.length) teile.push(`jahr=${f.jahr.join(",")}`);
   if (f.monat !== null) teile.push(`monat=${f.monat}`);
   if (f.herkunft !== VORGABE.herkunft) teile.push(`herkunft=${f.herkunft}`);
   if (f.typ !== "alle") teile.push(`typ=${f.typ}`);
   if (f.ort !== "alle") teile.push(`ort=${f.ort}`);
+  if (f.zelle !== null) teile.push(`zelle=${zelleText(f.zelle)}`);
   if (f.seite > 1) teile.push(`seite=${f.seite}`);
   teile.push(...zusatz);
   return teile.length ? `?${teile.join("&")}` : "";
@@ -122,11 +150,12 @@ export function galerielink(
 /** Ist ueberhaupt etwas eingeschraenkt? Ohne Filter gibt es keine Sammelauswahl. */
 export function istEingeschraenkt(filter: Filter): boolean {
   return (
-    filter.jahr !== null ||
+    filter.jahr.length > 0 ||
     filter.monat !== null ||
     filter.herkunft !== "alle" ||
     filter.typ !== "alle" ||
-    filter.ort !== "alle"
+    filter.ort !== "alle" ||
+    filter.zelle !== null
   );
 }
 
@@ -143,9 +172,22 @@ export function bedingung(filter: Filter, sicht: Sicht, ausser?: keyof Filter): 
   const teile = [s.text];
   const werte: unknown[] = [...s.werte];
 
-  if (filter.jahr !== null && ausser !== "jahr") {
+  /*
+    DER FILTER ERWEITERT DEN ZUGRIFF NIE.
+
+    `sichtbar(sicht)` hat, falls das Konto eingeschraenkt ist, bereits ein
+    eigenes `jahr = ANY(...)` beigesteuert. Die Zeile hier kommt mit UND
+    daneben, es entsteht also der Durchschnitt beider Mengen. Steht in der
+    Adresse ein Jahr, das nicht freigeschaltet ist, kommt dafuer nichts – ohne
+    Fehlerseite und ohne Sonderfall.
+
+    Das ist die Stelle, an der eine Aufzaehlung gefaehrlich waere: bei einem
+    einzelnen Jahr faellt eine fehlende Pruefung sofort auf, bei
+    `jahr=2024,2025` mit nur einem erlaubten Eintrag nicht.
+  */
+  if (filter.jahr.length && ausser !== "jahr") {
     werte.push(filter.jahr);
-    teile.push(`jahr = $${werte.length}`);
+    teile.push(`jahr = ANY($${werte.length}::smallint[])`);
   }
   if (filter.monat !== null && ausser !== "monat") {
     werte.push(filter.monat);
@@ -161,6 +203,13 @@ export function bedingung(filter: Filter, sicht: Sicht, ausser?: keyof Filter): 
   }
   if (filter.ort !== "alle" && ausser !== "ort") {
     teile.push(filter.ort === "mit" ? "gps_status = 'ok'" : "gps_status <> 'ok'");
+  }
+  // Der Kartenausschnitt. Dieselbe Rechnung wie beim Gruppieren auf der Karte,
+  // aus `zelle.ts` – nicht als Rechteck in Grad nachgebaut.
+  if (filter.zelle !== null && ausser !== "zelle") {
+    const z = zellbedingung(filter.zelle, werte.length + 1);
+    werte.push(...z.werte);
+    teile.push(z.text);
   }
   return { text: teile.join(" AND "), werte };
 }

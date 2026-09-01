@@ -51,7 +51,7 @@ export default async function Karte({
         <details className="filterklappe">
           <summary>
             Filter · {filter.herkunft === "alle" ? "alle Herkünfte" : filter.herkunft}
-            {filter.jahr !== null ? ` · ${filter.jahr}` : ""}
+            {filter.jahr.length ? ` · ${filter.jahr.join(", ")}` : ""}
             {filter.typ !== "alle" ? ` · ${filter.typ}` : ""}
           </summary>
           <Filterleiste
@@ -93,7 +93,8 @@ export default async function Karte({
       </p>
 
       <p className="leise">
-        Ein Klick auf eine Gruppe zoomt so weit hinein, dass sie zerfällt. Ist der
+        Ein Klick auf eine Gruppe öffnet zwei Wege: <em>hineinzoomen</em>, bis sie
+        zerfällt, oder ihre Aufnahmen <em>in der Galerie</em> ansehen. Ist der
         Ausschnitt klein genug, steht jede Aufnahme einzeln.
       </p>
     </main>

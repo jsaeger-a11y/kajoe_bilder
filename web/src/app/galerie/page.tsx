@@ -13,6 +13,7 @@ import {
 } from "@/lib/markierung";
 import { HOECHSTENS_JE_VORGANG } from "@/lib/rechte";
 import { sichtVon, sichtbar } from "@/lib/sichtbar";
+import { zellmitte } from "@/lib/zelle";
 import { darf, verlangeAnmeldung } from "@/lib/zugriff";
 import Kopf from "../kopf";
 import Auswahlleiste from "./auswahlleiste";
@@ -85,6 +86,34 @@ export default async function Galerie({
       <h1>Galerie</h1>
 
       <Filterleiste filter={filter} zahlen={zahlen} treffer={treffer} zeitraeume={raeume} />
+
+      {/*
+        Dass ein Kartenausschnitt filtert, muss dastehen. Sonst sucht jemand
+        ein Bild, das in dieser Zelle nun einmal nicht liegt, und haelt die
+        Galerie fuer kaputt. Dazu der Weg zurueck an dieselbe Stelle der Karte
+        – Mitte und Zoomstufe stecken in der Zelle, es braucht keine
+        zusaetzliche Angabe in der Adresse.
+      */}
+      {filter.zelle !== null ? (
+        <p className="hinweis-filter">
+          <strong>Kartenausschnitt</strong> – gezeigt werden nur die{" "}
+          <strong>{treffer}</strong> Aufnahmen aus der angeklickten Gruppe
+          (Stufe {filter.zelle.stufe}). Aufnahmen <em>ohne Ort</em> erscheinen hier
+          nicht.{" "}
+          {darf(wer, "karte") ? (
+            <Link href={`/karte${suchtext({ ...filter, zelle: null, ort: "alle", seite: 1 }, {},
+              [`lat=${zellmitte(filter.zelle).lat.toFixed(5)}`,
+               `lon=${zellmitte(filter.zelle).lon.toFixed(5)}`,
+               `z=${filter.zelle.stufe}`])}`}>
+              zurück zur Karte
+            </Link>
+          ) : null}
+          {" · "}
+          <Link href={`/galerie${suchtext({ ...filter, zelle: null, seite: 1 })}`}>
+            Ausschnitt aufheben
+          </Link>
+        </p>
+      ) : null}
 
       <div className="filterzeile">
         <b>Auswahl</b>
