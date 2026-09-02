@@ -482,3 +482,103 @@ Nachgemessen mit einem erzwungenen Fehler: die Zeile steht auf `fehler` mit
 | `--hoechstens 3000` von Hand | läuft durch, 2.800 entfernt |
 | `Persistent=true` | Stempeldatei auf vor 3 Tagen gesetzt, Timer gestartet → Lauf holt sofort nach |
 | `status.sh` | zeigt Modus, Auslöser, Ausgang und Zahlen |
+
+---
+
+# Bildschirmfotos als eigene Herkunft
+
+`ohne_exif` war ein Sammelbecken: alles ohne `Make` landete darin –
+Weitergeleitetes aus Messengern, Netzfunde und Bildschirmfotos. Drei sehr
+verschiedene Dinge unter einem Namen. Seit Migration 009 gibt es `screenshot`.
+
+## Erkannt wird an der Kombination – ohne KI
+
+Drei Bedingungen, alle drei müssen zutreffen:
+
+1. die Bildmaße entsprechen **exakt** einer bekannten Bildschirmauflösung,
+   hoch oder quer
+2. **und `Make` fehlt**
+3. **und es ist ein Bild, kein Video**
+
+Jede für sich wäre falsch. Nur die Maße zu prüfen finge ein zugeschnittenes
+Foto ein. Nur `Make` zu prüfen ist genau das, was vorher geschah. Und ohne die
+dritte Bedingung würde jedes Full-HD-Video ohne Kameradaten zum Bildschirmfoto
+– nachgemessen: von 1.023 Zeilen mit den Maßen 1920 × 1080 sind **1.013
+Videos**.
+
+Der Dateityp ist ein Hinweis, kein Kriterium: ältere iOS-Fassungen speichern
+PNG, neuere teils HEIC, und ein weitergeleitetes Bildschirmfoto kommt als JPEG
+an. Im Bestand verteilen sich die Treffer auf PNG, JPEG, HEIC und HEIF.
+
+**Die Reihenfolge ist `screenshot` vor `ohne_exif`.** Andersherum griffe die
+weitere Regel zuerst und die neue nie.
+
+## Die Liste ist eine Datei, kein Code
+
+`tools/bildschirmgroessen.txt`. Eine Zeile je Auflösung, dahinter der
+Gerätename. **Querformat wird beim Laden ergänzt** – wer die gedrehte Fassung
+von Hand nachtragen müsste, vergisst sie irgendwann bei genau einem Gerät.
+
+Die Datei sagt auch, was bewusst **nicht** drinsteht, und das ist der
+wichtigere Teil:
+
+| nicht aufgenommen | Grund |
+|---|---|
+| `1080x1920` | iPhone Plus – zugleich die verbreitetste Videoauflösung überhaupt |
+| `1024x768`, `768x1024` | klassische Verkleinerungsgröße von Messengern; 51 Zeilen im Bestand, keine davon ein Bildschirmfoto |
+| `750x1624` | 41 PNG ohne `Make` im Bestand, vermutlich Bildschirmfotos – aber von keinem Apple-Gerät. Erst klären, woher sie kommen |
+
+Lieber eines zu wenig erkannt als ein Foto falsch einsortiert. Nachtragen ist
+eine Zeile, Zurückholen ist ein Nachlauf über den Bestand.
+
+Die Einteilung selbst steht in `tools/bestand.py` und wird von dort
+eingebunden – auch von `ingest/einordnen.py`. Zwei Fassungen derselben Regel
+liefen früher oder später auseinander, und dann stimmte die Messung nicht mehr
+mit dem Bestand überein.
+
+## Was geprüft wurde
+
+Sechs Dateien durch einen **isolierten** Ingest-Lauf (`--eingang` auf ein
+eigenes Verzeichnis; das echte `eingang/` wurde dabei gerade befüllt und blieb
+unangetastet):
+
+| Datei | Maße | `Make` | Ergebnis |
+|---|---|---|---|
+| `probe-screenshot-hoch.png` | 1170×2532 | – | **`screenshot`** |
+| `probe-screenshot-quer.png` | 2532×1170 | – | **`screenshot`** |
+| `probe-foto-echt.jpg` | 4032×3024 | Apple | `iphone` |
+| `probe-foto-zugeschnitten.jpg` | **1170×2532** | Apple | **`iphone`** |
+| `probe-png-ungewoehnlich.png` | 1234×567 | – | `ohne_exif` |
+| `probe-video-schirmgroesse.mp4` | 1170×2532 | – | `ohne_exif` |
+
+Die vierte Zeile ist der eigentliche Prüfstein: ein Foto, das zufällig genau
+auf eine Bildschirmgröße zugeschnitten ist, bleibt `iphone`, weil `Make` da
+ist. Im Bestand fand sich kein solcher Fall – bei allen aufgenommenen
+Auflösungen steht die Zahl der `iphone`-Zeilen auf null –, also wurde einer
+hergestellt.
+
+**Zweiter Lauf über dieselben Dateien:** 6 gefunden, 6 Dubletten, 0
+übernommen; Zeilenzahl und Herkunftsverteilung buchstäblich unverändert.
+
+**Oberfläche:** Filter `herkunft=screenshot` zeigt dieselbe Zahl wie die
+Datenbank, die Vorgabe der Galerie bleibt `iphone` (nachgesehen, welcher
+Filterknopf ohne Parameter als `gewaehlt` gerendert wird), und die Übersicht
+verlinkt `screenshot` wie die anderen Werte.
+
+## Nachlauf über den vorhandenen Bestand
+
+`ingest/screenshots_nachtragen.py` bewertet die vorhandenen `ohne_exif`-Zeilen
+neu. **Zählen ist die Vorgabe**, geschrieben wird erst mit `--scharf`.
+
+- Nur `ohne_exif` wird angefasst; wo ein `Make` steht, ist es kein
+  Bildschirmfoto
+- Wiederholt ausführbar: ein zweiter Lauf findet nichts mehr
+- Dieselbe Erkennung wie der Ingest, nicht als SQL nachgebaut
+- Legt eine Handvoll Treffer als Bild nach
+  `/data/kajoe_bilder/probe/screenshots/` – ob die Erkennung taugt, sieht man
+  nicht an einer Zahl
+- Danach eine Gegenprobe: die Summe über alle Herkunftswerte muss weiterhin
+  die Gesamtzahl der Zeilen ergeben – umgeteilt, nicht verloren
+
+Die Bildmaße stehen schon in `bild.breite` und `bild.hoehe`; die Dateien
+werden dafür nicht noch einmal gelesen.

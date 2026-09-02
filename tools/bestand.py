@@ -18,14 +18,84 @@ from pathlib import Path
 BILD = {"HEIC", "HEIF", "JPEG", "PNG", "TIFF", "DNG"}
 VIDEO = {"MOV", "MP4", "M4V", "AVI"}
 
+# Die gepflegte Liste der Bildschirmauflösungen. Eine Datei und kein Code:
+# beim naechsten Geraet traegt jemand eine Zeile nach, statt im Quelltext zu
+# suchen. Warum welche Aufloesung NICHT drinsteht, steht ebenfalls dort.
+BILDSCHIRMLISTE = Path(__file__).resolve().parent / "bildschirmgroessen.txt"
 
-def herkunft(make: str, model: str) -> str:
-    """Dieselbe Einteilung wie spaeter im Ingest."""
+
+def _bildschirmgroessen(pfad: Path = BILDSCHIRMLISTE) -> set[tuple[int, int]]:
+    """Alle Auflösungen, hoch UND quer.
+
+    Das Drehen passiert hier und nicht in der Datei: wer die gedrehte Fassung
+    von Hand nachtragen muesste, vergisst sie irgendwann bei genau einem
+    Geraet, und dann wird ein quer aufgenommenes Bildschirmfoto still nicht
+    erkannt.
+    """
+    groessen: set[tuple[int, int]] = set()
+    try:
+        zeilen = pfad.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        # Ohne Liste bleibt alles beim Alten: `ohne_exif` wie bisher. Ein
+        # fehlendes Beiwerk darf den Ingest nicht anhalten.
+        return groessen
+    for zeile in zeilen:
+        zeile = zeile.split("#", 1)[0].strip()
+        if not zeile:
+            continue
+        masse = zeile.split()[0]
+        try:
+            b, h = (int(x) for x in masse.lower().split("x", 1))
+        except ValueError:
+            continue
+        groessen.add((b, h))
+        groessen.add((h, b))
+    return groessen
+
+
+# Einmal beim Laden. Die Datei aendert sich nicht waehrend eines Laufs.
+BILDSCHIRMGROESSEN = _bildschirmgroessen()
+
+
+def ist_bildschirmgroesse(breite: int | None, hoehe: int | None) -> bool:
+    return (breite, hoehe) in BILDSCHIRMGROESSEN if breite and hoehe else False
+
+
+def herkunft(
+    make: str,
+    model: str,
+    breite: int | None = None,
+    hoehe: int | None = None,
+    ist_bild: bool = True,
+) -> str:
+    """Dieselbe Einteilung wie spaeter im Ingest.
+
+    **Bildschirmfoto wird VOR `ohne_exif` geprueft.** Andersherum griffe die
+    aeltere, weitere Regel zuerst und die neue nie – `ohne_exif` ist ja gerade
+    definiert als "kein Make", und genau das haben Bildschirmfotos auch.
+
+    Es zaehlt die KOMBINATION: passende Bildschirmmasse UND kein `Make`. Nur
+    die Masse zu pruefen waere riskant, weil ein zugeschnittenes Foto zufaellig
+    passen kann; nur `Make` zu pruefen ist das, was vorher geschah.
+
+    `ist_bild` ist die dritte, stillschweigende Bedingung: ein Video ist kein
+    Bildschirmfoto. Ohne sie wuerde jedes Full-HD-Video ohne Kameradaten zum
+    Bildschirmfoto – im Bestand tragen 1.013 Videos die Masse 1920x1080.
+    """
     if not make.strip():
+        if ist_bild and ist_bildschirmgroesse(breite, hoehe):
+            return "screenshot"
         return "ohne_exif"
     if make.strip().lower().startswith("apple"):
         return "iphone" if "iphone" in model.lower() else "apple_sonstig"
     return "fremd"
+
+
+def _zahl(x: str | None) -> int | None:
+    try:
+        return int(float(x))
+    except (TypeError, ValueError):
+        return None
 
 
 def zeige(titel: str, zaehler: Counter, gesamt: int, grenze: int = 20) -> None:
@@ -58,11 +128,13 @@ def main() -> None:
             typ = (zeile.get("FileType") or "").strip()
             make = (zeile.get("Make") or "").strip()
             model = (zeile.get("Model") or "").strip()
+            breite = _zahl(zeile.get("ImageWidth"))
+            hoehe = _zahl(zeile.get("ImageHeight"))
 
             typen[typ or "(unbekannt)"] += 1
             hersteller[make or "(kein Make)"] += 1
             modelle[model or "(kein Model)"] += 1
-            kategorien[herkunft(make, model)] += 1
+            kategorien[herkunft(make, model, breite, hoehe, typ in BILD)] += 1
 
             try:
                 groesse = int(float(zeile.get("FileSize") or 0))

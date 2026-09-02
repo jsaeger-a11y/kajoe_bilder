@@ -287,7 +287,10 @@ class Lauf:
         lat, lon, gps_status = einordnen.ort(md)
         breite, hoehe, ausrichtung = einordnen.masse(md)
         dauer, codec, hdr = einordnen.videoangaben(md) if art.art == "video" else (None, None, False)
-        kategorie = einordnen.herkunft(make, model)
+        # Masse und Art gehen mit ein: ein Bildschirmfoto erkennt man an der
+        # Kombination aus Bildschirmaufloesung und fehlendem `Make`, und ein
+        # Video ist nie eines. `masse()` steht deshalb eine Zeile hoeher.
+        kategorie = einordnen.herkunft(make, model, breite, hoehe, art.art == "bild")
 
         if self.trocken:
             z.uebernommen += 1

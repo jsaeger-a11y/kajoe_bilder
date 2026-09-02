@@ -1,0 +1,67 @@
+# Bildschirmauflösungen, an denen ein Bildschirmfoto zu erkennen ist.
+#
+# Diese Datei ist die EINE Stelle. Sie wird von tools/bestand.py gelesen und
+# von dort auch vom Ingest benutzt (ingest/einordnen.py bindet die Funktion
+# ein, statt sie nachzubauen). Eine Liste im Code müsste jemand beim nächsten
+# Gerät im Quelltext suchen; hier steht sie zum Nachtragen.
+#
+# Format: BREITExHOEHE, dahinter frei der Gerätename. Alles ab # ist Kommentar,
+# Leerzeilen sind erlaubt.
+#
+# QUERFORMAT MUSS NICHT EINGETRAGEN WERDEN. Jede Zeile gilt in beiden
+# Richtungen – wer die gedrehte Fassung von Hand nachtragen müsste, vergisst
+# sie irgendwann bei genau einem Gerät.
+#
+# -------------------------------------------------------------------------
+# WAS HIER NICHT HINEINGEHÖRT, UND WARUM
+#
+# Die Auflösung allein entscheidet nichts – es zählt die Kombination aus
+# passenden Maßen UND fehlendem `Make`. Trotzdem ist die Liste die
+# gefährlichste Stelle: ein Format, das auch als Zielgröße von Messengern oder
+# als übliche Bildgröße vorkommt, macht aus Fotos ohne EXIF stillschweigend
+# Bildschirmfotos. Deshalb nur, was unverwechselbar ein Bildschirm ist.
+#
+# Bewusst NICHT aufgenommen, am Bestand nachgemessen:
+#
+#   1080x1920   iPhone Plus. Zugleich die verbreitetste Videoauflösung
+#               überhaupt: von 1.023 Zeilen mit diesen Maßen sind 1.013
+#               Videos. Das Kriterium `typ = 'bild'` fängt die Videos schon
+#               ab, aber Full-HD ist auch bei Standbildern (Netzfunde,
+#               Hintergrundbilder) zu gewöhnlich, um etwas zu beweisen.
+#
+#   1024x768    Klassische Verkleinerungsgröße von Messengern und alten
+#   768x1024    Digitalkameras. Im Bestand 51 Zeilen, keine davon erkennbar
+#               ein Bildschirmfoto.
+#
+#   750x1624    Im Bestand 41 PNG ohne `Make` – vermutlich wirklich
+#               Bildschirmfotos, aber von keinem iPhone: das Format gehört zu
+#               keiner bekannten Apple-Auflösung. Wer sie einordnen will,
+#               klärt erst, woher sie kommen, und trägt sie dann hier ein.
+#
+# Lieber ein Bildschirmfoto zu wenig erkannt als ein Foto falsch einsortiert.
+# Nachtragen ist eine Zeile, Zurückholen ist ein Nachlauf über den Bestand.
+# -------------------------------------------------------------------------
+
+# --- iPhone --------------------------------------------------------------
+640x1136    iPhone 5, 5S, 5C, SE (1. Gen.)
+750x1334    iPhone 6, 6S, 7, 8, SE (2./3. Gen.)
+1242x2208   iPhone Plus (logische Auflösung)
+1125x2436   iPhone X, XS, 11 Pro
+1242x2688   iPhone XS Max, 11 Pro Max
+828x1792    iPhone XR, 11
+1170x2532   iPhone 12, 12 Pro, 13, 13 Pro, 14
+1080x2340   iPhone 12 mini, 13 mini
+1284x2778   iPhone 12 Pro Max, 13 Pro Max, 14 Plus
+1179x2556   iPhone 14 Pro, 15, 15 Pro, 16
+1290x2796   iPhone 14 Pro Max, 15 Plus, 15 Pro Max, 16 Plus
+1206x2622   iPhone 16 Pro
+1320x2868   iPhone 16 Pro Max
+
+# --- iPad ----------------------------------------------------------------
+1536x2048   iPad Retina 9,7"
+1620x2160   iPad 10,2"
+1640x2360   iPad Air (4./5. Gen.), iPad 10
+1668x2224   iPad Pro 10,5"
+1668x2388   iPad Pro 11"
+2048x2732   iPad Pro 12,9"
+1488x2266   iPad mini (6. Gen.)

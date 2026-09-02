@@ -206,14 +206,39 @@ Landschaftsbild weggeworfen – also gerade die Kalendermotive –, und ein
 deterministisches Merkmal ist einem Modell überlegen, wenn es verfügbar ist.
 `Make = Apple` ist wahr oder falsch, kostet Millisekunden und irrt sich nie.
 
-Fünf Werte in `bild.herkunft`:
+Fünf Werte in `bild.herkunft` – seit Migration 009 sind es wirklich fünf:
 
 | Wert | Kriterium |
 |---|---|
 | `iphone` | `Make = Apple` und ein iPhone-Modell |
-| `apple_sonstig` | Apple, aber iPad, Mac oder Screenshot-Merkmale |
+| `apple_sonstig` | Apple, aber iPad oder Mac |
 | `fremd` | anderes `Make` – Gerätename bleibt gespeichert |
-| `ohne_exif` | kein `Make` (Messenger, Netzfund, Screenshot) |
+| `screenshot` | **kein `Make`** UND Bildmaße gleich einer bekannten Bildschirmauflösung UND `typ = 'bild'` |
+| `ohne_exif` | kein `Make` und keins der obigen (Messenger, Netzfund) |
+
+**Bildschirmfotos werden an der Kombination erkannt, nicht an einem Merkmal.**
+Nur die Maße zu prüfen finge zugeschnittene Fotos ein; nur `Make` zu prüfen ist
+das, was vorher geschah und `ohne_exif` ergab. Die dritte Bedingung steht nicht
+umsonst da: ohne sie würde jedes Full-HD-Video ohne Kameradaten zum
+Bildschirmfoto – im Bestand tragen **1.013 Videos** die Maße 1920 × 1080. Der
+Dateityp (PNG) ist dabei nur ein Hinweis: ältere iOS-Fassungen speichern PNG,
+neuere teils HEIC, und Weitergeleitetes kommt als JPEG an.
+
+**Die Reihenfolge ist `screenshot` vor `ohne_exif`.** Andersherum griffe die
+weitere Regel zuerst – `ohne_exif` heißt ja gerade „kein `Make`", und genau das
+haben Bildschirmfotos auch – und die neue nie.
+
+Die Auflösungsliste ist eine **gepflegte Datei**, kein Code:
+`tools/bildschirmgroessen.txt`. Querformat wird beim Laden ergänzt, nicht in
+der Datei gepflegt. Dort steht auch, welche Auflösungen bewusst **nicht**
+drinstehen und warum – 1024 × 768 etwa ist die klassische Zielgröße von
+Messengern und würde Fotos einfangen. Lieber ein Bildschirmfoto zu wenig
+erkannt als ein Foto falsch einsortiert: Nachtragen ist eine Zeile,
+Zurückholen ist ein Nachlauf über den Bestand.
+
+**Bildschirmfotos werden nicht verworfen** – weder beim Einlesen noch danach.
+Anders als bei den Wildkamerabildern gibt es dafür keinen zwingenden Grund, und
+die Erkennung ist neu. Sie bekommen eine Kategorie, mehr nicht.
 
 **Nichts wird beim Einlesen verworfen.** Die Herkunft ist ein Filter in der Abfrage,
 kein Ausschluss im Ingest. Die Galerie zeigt standardmäßig `iphone`, der Rest ist

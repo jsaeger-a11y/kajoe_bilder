@@ -91,8 +91,24 @@ def ist_wildkamera(make: str) -> bool:
     return make.strip().lower().startswith(WILDKAMERA)
 
 
-def herkunft(make: str, model: str) -> str:
-    return _herkunft_aus_messung(make, model)
+def herkunft(
+    make: str,
+    model: str,
+    breite: int | None = None,
+    hoehe: int | None = None,
+    ist_bild: bool = True,
+) -> str:
+    """Herkunft aus Geraeteangaben und Bildmassen.
+
+    Die Einteilung selbst steht in tools/bestand.py und wird von dort
+    eingebunden – auch die Erkennung von Bildschirmfotos. Zwei Fassungen
+    derselben Regel liefen frueher oder spaeter auseinander, und dann stimmte
+    die Messung nicht mehr mit dem Bestand ueberein.
+
+    Die Masse kommen aus `masse()` und werden in lauf.py VOR diesem Aufruf
+    ermittelt – das ist kein Zufall, sondern Voraussetzung.
+    """
+    return _herkunft_aus_messung(make, model, breite, hoehe, ist_bild)
 
 
 # ---------------------------------------------------------------------------

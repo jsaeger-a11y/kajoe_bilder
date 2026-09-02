@@ -17,7 +17,17 @@ import { zelleAusText, zelleText, zellbedingung, type Zelle } from "./zelle";
 /** Seitengroesse an EINER Stelle. Bei 922 Zeilen faellt sie nicht auf, bei 14.000 schon. */
 export const SEITENGROESSE = 60;
 
-export const HERKUENFTE = ["iphone", "apple_sonstig", "fremd", "ohne_exif"] as const;
+/**
+ * Die Herkunftswerte in der Reihenfolge, in der sie in der Filterleiste
+ * stehen. `screenshot` steht neben `ohne_exif`, weil es aus ihm herausgeloest
+ * wurde: bis dahin lagen Bildschirmfotos dort mit drin.
+ *
+ * Die VORGABE bleibt `iphone` (siehe VORGABE weiter unten und CLAUDE.md) –
+ * ein neuer Wert im Filter aendert nicht, was die Galerie ungefragt zeigt.
+ */
+export const HERKUENFTE = [
+  "iphone", "apple_sonstig", "fremd", "ohne_exif", "screenshot",
+] as const;
 export const TYPEN = ["bild", "video"] as const;
 
 export interface Filter {

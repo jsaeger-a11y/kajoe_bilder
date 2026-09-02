@@ -85,7 +85,10 @@ weggeworfen – also gerade die Kalendermotive. Und ein deterministisches Merkma
 einem Modell überlegen, wenn es verfügbar ist: `Make = Apple` ist wahr oder falsch,
 kostet Millisekunden und irrt sich nie.
 
-Vier Kategorien: `iphone`, `apple_sonstig`, `fremd`, `ohne_exif`.
+Fünf Kategorien: `iphone`, `apple_sonstig`, `fremd`, `screenshot`, `ohne_exif`.
+`screenshot` kam später dazu und löst Bildschirmfotos aus dem Sammelbecken
+`ohne_exif` heraus – erkannt an der Kombination aus Bildschirmauflösung,
+fehlendem `Make` und `typ = bild`, ohne KI.
 
 **Nichts wird beim Einlesen verworfen.** Die Galerie zeigt standardmäßig `iphone`, der
 Rest ist über einen Filter erreichbar und kann jederzeit für den Download freigegeben
