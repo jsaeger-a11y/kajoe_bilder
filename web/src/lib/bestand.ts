@@ -28,6 +28,15 @@ export interface Ueberblick {
   abgeleitetBytes: number | null;
   platteGesamt: number | null;
   platteFrei: number | null;
+  /**
+   * Was reserviert ist und deshalb weder als belegt noch als frei zaehlt.
+   *
+   * ext4 haelt Bloecke fuer root zurueck (hier 1 %). `df` rechnet sie aus
+   * beiden Spalten heraus, eine naive Rechnung `gesamt - frei` schluege sie
+   * dem Belegten zu – und die Uebersicht naennte neun Gigabyte mehr als `df`,
+   * ohne dass jemand den Unterschied erklaeren koennte.
+   */
+  platteReserve: number | null;
   wiedergabeErzeugt: number;
   /** Sagt der Anzeige, dass die Zahlen nicht den ganzen Bestand meinen. */
   jahreEingeschraenkt: boolean;
@@ -137,6 +146,7 @@ export async function ueberblick(sicht: Sicht): Promise<Ueberblick> {
     abgeleitetBytes: abgeleitet,
     platteGesamt: platte ? platte.blocks * platte.bsize : null,
     platteFrei: platte ? platte.bavail * platte.bsize : null,
+    platteReserve: platte ? (platte.bfree - platte.bavail) * platte.bsize : null,
     wiedergabeErzeugt: Number(summen?.wiedergabe ?? 0),
     jahreEingeschraenkt: knapp,
   };

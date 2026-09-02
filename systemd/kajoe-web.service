@@ -34,6 +34,17 @@ ExecStart=/home/jsaeger/.local/node/bin/node \
 Restart=on-failure
 RestartSec=5
 
+# Next faengt SIGTERM ab und beendet sich selbst mit 143 (128 + 15). Fuer
+# systemd ist das ein Rueckgabewert und kein Signaltod, also stand der Dienst
+# nach JEDEM normalen Stopp auf `failed`.
+#
+# Das ist keine Schoenheitsfrage. Ein Dienst, der im Normalbetrieb `failed`
+# meldet, macht die Zustandsanzeige wertlos: wer dreimal ein rotes `failed`
+# bei laufendem System sieht, sieht beim vierten Mal nicht mehr hin – und dann
+# faellt der echte Fehlschlag durch. `systemctl --user list-units --state=failed`
+# ist genau die Abfrage, mit der tools/nachneustart.sh nach Schaeden sucht.
+SuccessExitStatus=143
+
 # COOKIE_SECURE steht in der .env der Projektwurzel, nicht hier: eine
 # Einstellung an zwei Orten laeuft frueher oder spaeter auseinander.
 

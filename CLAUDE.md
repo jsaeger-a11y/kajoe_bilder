@@ -34,11 +34,69 @@ Auf `webspace` entstehen später weitere Projekte:
 Skripte lesen ihren Projektpfad **relativ zu sich selbst**, nie fest verdrahtet –
 sonst bricht ein Verschieben des Ordners alles.
 
-`/data/kajoe_bilder` ist ein **eigener Einhängepunkt** auf einem eigenen Logical
-Volume. Von 473 GB in `ubuntu-vg` sind 250 GB zugewiesen (243 GB nutzbar), der Rest
-bleibt bewusst frei: Vergrößern geht im Betrieb, Verkleinern nicht.
-
 Ports werden hier eingetragen, bevor sie belegt werden.
+
+### Die Platten
+
+**`/data` ist der Einhängepunkt, nicht `/data/kajoe_bilder`.** Seit dem Umzug auf
+eine eigene Datenplatte liegen die Projekte als gewöhnliche Unterverzeichnisse
+darin.
+
+| | |
+|---|---|
+| Gerät | `/dev/sda1`, 931,5 GB SSD |
+| Dateisystem | ext4, Label `daten` |
+| UUID | `13abc672-a8df-4ea7-b379-55ebbb8808ac` |
+| eingehängt unter | `/data` (in `/etc/fstab`, per UUID) |
+| Reserve | auf 1 % gesenkt – gemessen 1,02 %, also 9,3 GB statt 46 GB |
+| nutzbar | 916 GB, davon 117 GB belegt (13 %), 790 GB frei |
+| Inhalt | 55.542 Dateien |
+
+Die **Systemplatte** ist unverändert: `nvme0n1`, 476,9 GB, davon 473,9 GB als
+LVM in `ubuntu-vg`; `/` bekommt 100 GB, der Rest bleibt frei.
+
+**Kein LVM auf der Datenplatte.** Ein Volume je Projekt wäre nur eine
+Größenbeschränkung, die man später mühsam nachjustiert; auf einer eigenen
+Datenplatte konkurriert nichts mit dem System. Der Preis ist bekannt und
+angenommen: **ein Projekt kann die Platte für alle vollaufen lassen.** Bei
+916 GB und Hobbyprojekten überschaubar – `tools/status.sh` und
+`tools/nachneustart.sh` zeigen den Platz, letzteres warnt ab 90 %.
+
+**Das alte Logical Volume `ubuntu-vg/kajoe_bilder` (250 GB) existiert noch** und
+ist in der `fstab` auskommentiert. Es ist die Rückfalltür und wird erst
+entfernt, wenn der neue Zustand ein paar Tage getragen hat.
+
+> Deshalb prüft `tools/nachneustart.sh` nicht nur, **ob** `/data` eingehängt
+> ist, sondern auch, **worauf** `/data/kajoe_bilder` liegt. Hängt die Platte
+> nicht ein, existiert der Ordner trotzdem – leer, auf der 100-GB-Wurzel. Alles
+> sähe normal aus, der Ingest legte munter Dateien an, und auffallen würde es
+> erst, wenn `/` vollläuft oder jemand seine Bilder sucht. Und geprüft wird die
+> `fstab` mit `findmnt --fstab`, nicht mit `grep`: ein `grep /data /etc/fstab`
+> trifft auch die auskommentierte Zeile des alten Volume und meldet Erfolg, wo
+> keiner ist.
+
+### Zwei Warnungen, die erwartet sind
+
+`tools/status.sh` meldet zwei Dinge als Auffälligkeit, die **derzeit richtig
+sind**:
+
+```
+0.0.0.0:3000 – ACHTUNG: nicht auf 127.0.0.1 gebunden
+COOKIE_SECURE  0 – Sitzungscookie OHNE Secure, nur fuers LAN gedacht
+```
+
+Beides gehört zusammen und beides ist Absicht, **bis der Cloudflare Tunnel
+kommt** (etwa drei Monate). Das lokale Netz ist über `ufw` auf
+`192.168.188.0/24` begrenzt, und über `http://webspace:3000` käme ein
+`Secure`-Cookie nie an – die Anmeldung schlüge scheinbar grundlos fehl.
+
+**Mit dem Tunnel gehört beides zurück:** `-H 127.0.0.1` in
+`systemd/kajoe-web.service` und `COOKIE_SECURE=1` in der `.env`.
+
+Die Warnungen bleiben stehen und sollen weiter auffallen. Dieser Absatz ist
+das, was sie einordnet – ohne ihn passiert eines von zwei Dingen: jemand
+„repariert" den Zustand, solange er richtig ist, oder er bleibt stehen, wenn er
+falsch geworden ist.
 
 ---
 
@@ -127,11 +185,12 @@ gilt, ist offen und wird bei der nächsten Messung geprüft.
 ```
 
 ```
-/data/kajoe_bilder/
-├── eingang/                 wird hineinkopiert, vom Ingest geleert
-├── quarantaene/             was der Ingest nicht lesen konnte
-├── original/<jahr>/<monat>/<sha256>.<endung>
-└── abgeleitet/<jahr>/<monat>/<sha256>-{vorschau,ansicht}.jpg
+/data/                       Einhaengepunkt, /dev/sda1, 916 GB
+└── kajoe_bilder/            gewoehnlicher Ordner, kein eigenes Volume
+    ├── eingang/             wird hineinkopiert, vom Ingest geleert
+    ├── quarantaene/         was der Ingest nicht lesen konnte
+    ├── original/<jahr>/<monat>/<sha256>.<endung>
+    └── abgeleitet/<jahr>/<monat>/<sha256>-{vorschau,ansicht}.jpg
                              und -wiedergabe.mp4 bei Videos
 ```
 
@@ -486,12 +545,16 @@ Täglicher `pg_dump` ab Phase 0, nicht später.
 
 - **`BIGINT` liefert der Postgres-Treiber als Zeichenkette**, ganz gleich, was der
   TypeScript-Typ behauptet. […]
-- **Die Bindung auf `0.0.0.0` ist bis zum Cloudflare Tunnel Absicht.** Das lokale Netz
-  ist über `ufw` auf `192.168.188.0/24` begrenzt, deshalb steht `COOKIE_SECURE` auf 0 –
-  über `http://webspace:3000` käme ein `Secure`-Cookie nie an. **Mit dem Tunnel gehört
-  beides zurück:** `-H 127.0.0.1` in `systemd/kajoe-web.service` und `COOKIE_SECURE=1`
-  in der `.env`. Ohne diese Notiz wird der Zustand entweder „repariert", solange er
-  richtig ist, oder er bleibt stehen, wenn er falsch geworden ist
+- **Die Bindung auf `0.0.0.0` und `COOKIE_SECURE=0` sind bis zum Cloudflare Tunnel
+  Absicht** – ausführlich unter „Zwei Warnungen, die erwartet sind". `tools/status.sh`
+  meldet beides weiterhin, und das soll es auch
+- **Ein Dienst, der im Normalbetrieb `failed` meldet, macht die Zustandsanzeige
+  wertlos.** Next fängt SIGTERM ab und endet mit 143; für systemd ist das ein
+  Rückgabewert und kein Signaltod, also stand `kajoe-web` nach jedem normalen
+  Stopp auf `failed`. Wer dreimal ein rotes `failed` bei laufendem System sieht,
+  sieht beim vierten Mal nicht mehr hin. `SuccessExitStatus=143` in die Unit –
+  genau die Abfrage `--state=failed` sucht in `tools/nachneustart.sh` nach
+  Schäden
 - **Kein zweiter Ort für dasselbe Geheimnis.** `DATABASE_URL` stand als eigener Eintrag
   in der `.env` und enthielt das Passwort ein zweites Mal. Am 31.08.2026 hing die
   Anwendung stundenlang an einem Passwort, das nur an einer Stelle stimmte, und

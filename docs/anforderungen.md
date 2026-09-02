@@ -35,10 +35,16 @@ getrennt: eigenes Verzeichnis, eigener Datenbankcontainer, eigener Port, eigener
 
 ## A. Infrastruktur – erledigt
 
-- **Speicher:** 250 GB als eigenes Logical Volume, eingehängt unter
-  `/data/kajoe_bilder` über UUID, ext4, reservierte Blöcke auf 1 % gesenkt.
-  243 GB nutzbar. Rund 124 GB bleiben in der Volume Group unzugewiesen – Vergrößern
-  geht im Betrieb, Verkleinern nicht.
+- **Speicher:** eigene 1-TB-SSD (`/dev/sda1`, 931,5 GB, ext4, Label `daten`),
+  eingehängt über UUID unter **`/data`** – nicht unter `/data/kajoe_bilder`.
+  Reservierte Blöcke auf 1 % gesenkt (gemessen 1,02 %), 916 GB nutzbar. Die
+  Projekte liegen als gewöhnliche Unterverzeichnisse darin; **kein LVM auf
+  dieser Platte**, weil ein Volume je Projekt nur eine Größenbeschränkung wäre,
+  die man später nachjustieren müsste. Der Preis: ein Projekt kann die Platte
+  für alle vollaufen lassen – bei 916 GB überschaubar, und die Werkzeuge zeigen
+  den Platz. Das alte 250-GB-Volume in `ubuntu-vg` existiert noch, in der
+  `fstab` auskommentiert, als Rückfalltür. Die Systemplatte (476,9 GB NVMe)
+  trägt weiterhin `/` mit 100 GB in `ubuntu-vg`.
 - **Docker** 28 mit Compose 2.40, läuft ohne `sudo`
 - **Node** 22.11.0 unter `~/.local/node/bin`
 - **ffmpeg** 8.0.1 mit Quick Sync über die UHD 630: HEVC lesen (8 und 10 Bit),

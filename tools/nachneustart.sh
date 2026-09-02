@@ -30,7 +30,12 @@
 set -uo pipefail
 
 PROJEKT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DATEN=/data/kajoe_bilder
+
+# Seit dem Plattenumzug ist /data der Einhaengepunkt (eigene 1-TB-SSD) und
+# /data/kajoe_bilder nur noch ein Ordner darin. Beides steht hier getrennt,
+# weil beides getrennt schiefgehen kann.
+DATEN=/data
+PROJEKTDATEN=/data/kajoe_bilder
 CONTAINER=kajoe_bilder_db
 
 # Der gemerkte Zaehlerstand liegt im Projekt und nicht unter $HOME: dann haengt
@@ -84,25 +89,52 @@ fi
 # ---------------------------------------------------------------------------
 titel "Einhaengepunkt"
 if findmnt -n "$DATEN" >/dev/null 2>&1; then
-    ok "$DATEN eingehaengt" "$(findmnt -no SOURCE,FSTYPE "$DATEN")"
-    # Ohne Eintrag in der fstab kommt er beim naechsten Mal nicht wieder,
-    # auch wenn er jetzt da ist.
-    if grep -q "$DATEN" /etc/fstab; then
-        ok "steht in der fstab"
+    ok "$DATEN eingehaengt" "$(findmnt -no SOURCE,FSTYPE,LABEL,SIZE "$DATEN")"
+
+    # Ohne Eintrag in der fstab kommt er beim naechsten Mal nicht wieder, auch
+    # wenn er jetzt da ist. `findmnt --fstab` liest die Datei richtig – ein
+    # `grep /data /etc/fstab` traefe auch die AUSKOMMENTIERTE Zeile des alten
+    # Logical Volume und meldete Erfolg, wo keiner ist.
+    if findmnt -n --fstab "$DATEN" >/dev/null 2>&1; then
+        ok "steht in der fstab" "$(findmnt -no SOURCE --fstab "$DATEN")"
     else
         weh "steht NICHT in der fstab" "kommt beim naechsten Neustart nicht wieder"
     fi
-    PROBE="$DATEN/.schreibprobe.$$"
-    if touch "$PROBE" 2>/dev/null; then
-        rm -f "$PROBE"; ok "beschreibbar"
-    else
-        weh "nicht beschreibbar"
-    fi
-    for u in eingang original abgeleitet quarantaene; do
-        [ -d "$DATEN/$u" ] || weh "Unterverzeichnis fehlt" "$u"
-    done
 else
     weh "$DATEN NICHT eingehaengt" "ohne ihn liefert die Anwendung keine Bilder"
+fi
+
+# DIE WICHTIGERE FRAGE: liegt das Projektverzeichnis auch wirklich auf der
+# Datenplatte?
+#
+# Haengt /data nicht ein, existiert /data/kajoe_bilder trotzdem – als leerer
+# Ordner auf der Systemplatte. Alles sieht dann normal aus, der Ingest legt
+# munter Dateien an, und sie landen auf der 100-GB-Wurzel statt auf der SSD.
+# Auffallen wuerde es erst, wenn / vollaeuft oder jemand seine Bilder sucht.
+TRAEGER=$(findmnt -no TARGET -T "$PROJEKTDATEN" 2>/dev/null)
+if [ "$TRAEGER" = "$DATEN" ]; then
+    ok "$PROJEKTDATEN liegt auf $DATEN"
+else
+    weh "$PROJEKTDATEN liegt auf ${TRAEGER:-?}" "erwartet: $DATEN – die Datenplatte fehlt"
+fi
+
+PROBE="$PROJEKTDATEN/.schreibprobe.$$"
+if touch "$PROBE" 2>/dev/null; then
+    rm -f "$PROBE"; ok "beschreibbar"
+else
+    weh "nicht beschreibbar" "$PROJEKTDATEN"
+fi
+for u in eingang original abgeleitet quarantaene; do
+    [ -d "$PROJEKTDATEN/$u" ] || weh "Unterverzeichnis fehlt" "$u"
+done
+
+# Platz. Die Platte gehoert allen Projekten unter /data – ohne LVM begrenzt
+# nichts ein einzelnes, und wer sie vollschreibt, trifft die uebrigen mit.
+read -r _ GROESSE BELEGT FREI ANTEIL _ <<< "$(df -h --output=source,size,used,avail,pcent,target "$DATEN" | tail -1)"
+if [ "${ANTEIL%\%}" -ge 90 ] 2>/dev/null; then
+    weh "Platz auf $DATEN" "$BELEGT von $GROESSE belegt ($ANTEIL), nur noch $FREI frei"
+else
+    ok "Platz auf $DATEN" "$BELEGT von $GROESSE belegt ($ANTEIL), $FREI frei"
 fi
 
 # ---------------------------------------------------------------------------

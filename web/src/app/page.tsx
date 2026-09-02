@@ -106,12 +106,23 @@ export default async function Uebersicht() {
         lassen sich nicht je Jahrgang trennen. Wer nur 2025 sehen darf, laese
         hier sonst den Umfang des ganzen Bestands ab.
       */}
-      {b.platteGesamt !== null && b.platteFrei !== null ? (
+      {b.platteGesamt !== null && b.platteFrei !== null && b.platteReserve !== null ? (
         <>
           <h2>Platte</h2>
+          {/*
+            Der Einhaengepunkt ist <code>/data</code> und nicht
+            /data/kajoe_bilder – dort steht seit dem Plattenumzug nur noch ein
+            Ordner. Die Zahlen gelten fuer die ganze Platte, die sich alle
+            Projekte teilen; sie /data/kajoe_bilder zuzuschreiben waere eine
+            stille Unwahrheit, sobald ein zweites Projekt dazukommt.
+          */}
           <p className="leise">
-            {gb(b.platteGesamt - b.platteFrei)} von {gb(b.platteGesamt)} belegt,{" "}
-            {gb(b.platteFrei)} frei auf <code>/data/kajoe_bilder</code>.
+            {gb(b.platteGesamt - b.platteFrei - b.platteReserve)} von{" "}
+            {gb(b.platteGesamt)} belegt, {gb(b.platteFrei)} frei auf{" "}
+            <code>/data</code> – der Platte, die sich alle Projekte teilen.
+            {b.platteReserve > 0
+              ? ` ${gb(b.platteReserve)} sind für root reserviert.`
+              : ""}
           </p>
         </>
       ) : null}
