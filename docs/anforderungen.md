@@ -96,8 +96,52 @@ werden. Unter `fremd` können Fotos liegen, die andere von der Familie gemacht u
 geschickt haben. Ein Ingest, der wegwirft, trifft eine Entscheidung, die niemand
 zurücknehmen kann – und man weiß hinterher nicht einmal, was gefehlt hat.
 
-Damit entfallen der gesamte KI-Teil, die Modellgewichte und ein Erstdurchlauf über
-Stunden.
+Damit entfielen der gesamte KI-Teil, die Modellgewichte und ein Erstdurchlauf über
+Stunden – bis Phase 9a. Dort kommt ein Modell zurück, aber mit einer anderen
+Aufgabe: nicht aussortieren, sondern **vorschlagen**. Siehe B7.
+
+### B7 – Gesichter: Vorschlag der Maschine, Entscheidung des Menschen
+
+Die Regel „keine KI" ist mit Phase 9a **eingegrenzt**, nicht aufgehoben. Was ein
+Modell weiterhin nicht darf: entscheiden, was verworfen oder wie sortiert wird.
+Was es darf: Gesichter finden und ähnliche zu Häufchen zusammenlegen, damit ein
+Mensch sie mit einem Blick benennt statt tausend Bilder einzeln durchzusehen.
+
+**Zwei Spalten, die nie ineinander überschrieben werden.** `gesicht.gruppe_id`
+ist der Vorschlag des Modells; ein neuer Lauf darf ihn ändern. `gesicht.person_id`
+ist die Zuordnung eines Menschen; ein Lauf schreibt dort **nie**. Wer das eine mit
+dem anderen überschreibt, kann später nicht mehr sagen, wie verlässlich die
+Zuordnungen sind – und genau das ist die Frage, sobald ein Häufchen zwei
+Personen enthält.
+
+**Lokal, ohne Netz.** InsightFace `buffalo_l` (RetinaFace und ArcFace) über
+`onnxruntime` auf dem Prozessor. Kein Bild verlässt den Server; das ist bei
+Gesichtern von Kindern keine Nebensache. Die Gewichte sind für Forschung und
+nicht-kommerzielle Nutzung freigegeben; ein privates Familienarchiv ist damit
+gedeckt, ein Verkauf des Systems wäre es nicht.
+
+**Nicht jeder Fund taugt zum Gruppieren.** Winzige, unscharfe oder stark
+gedrehte Gesichter liefern Vektoren, die zu allem ein bisschen ähnlich sind –
+sie zögen über eine Kette zwei Personen zusammen. Sie werden gefunden und
+gespeichert, aber nur den bestehenden Häufchen **streng** zugeordnet und bilden
+nie selbst eines. Die Schwellen stehen an einer Stelle im Code und wurden am
+Piloten eingestellt.
+
+**Ein Häufchen braucht gegenseitige Stützen.** Zwei Funde, die sich ähnlich sind,
+reichen nicht; ein Fund muss mehrere Nachbarn haben, um ein Häufchen zu tragen.
+Das ist die Idee von DBSCAN, ausgeschrieben, damit die Schwellen sichtbar sind.
+**Keine vollständige Abstandsmatrix, kein pgvector:** gerechnet wird in Blöcken,
+der Speicher wächst linear mit der Fundzahl. Eine Datenbankerweiterung wäre
+dasselbe Übermaß wie PostGIS für die Karte.
+
+**Wiederholbar.** Ein Bild gilt als angesehen, sobald `bild.gesichter_am` steht –
+auch wenn kein Gesicht darauf war. Ein zweiter Lauf nimmt nur neue Bilder, legt
+neue Funde an bestehende Häufchen an und lässt die bestehende Zugehörigkeit in
+Ruhe. Ein Neugruppieren aller Funde ist ein eigener, ausdrücklicher Schalter.
+
+**9a hat keine Oberfläche.** Ob die Häufchen taugen, sieht man auf Kontaktbögen
+unter `/data/kajoe_bilder/probe/gruppen/`. Benennen und Suchen kommen in 9b –
+erst, wenn die Bögen überzeugen.
 
 ### B4 – Originale und Ableitungen
 
@@ -214,7 +258,10 @@ zweistufig, mit 30 Tagen Frist. Bilder in einer Auswahlliste bleiben verschont.
 | 6 | Jahresfreischaltung je Benutzer | fertig |
 | 7 | Aufräumen und Systempflege automatisieren | fertig (Neustart steht aus) |
 | 8 | Mehrjahresfilter, von der Karte in die Galerie | fertig |
-| 9 | Cloudflare Tunnel | offen |
+| – | Nachträge: Plattenumzug, Bildschirmfotos als Herkunft | fertig |
+| 9a | Gesichter finden und gruppieren, ohne Oberfläche | Pilot |
+| 9b | Benennen und Suchen nach Personen | offen |
+| 10 | Cloudflare Tunnel | offen |
 
 ---
 

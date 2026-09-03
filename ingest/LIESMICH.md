@@ -582,3 +582,202 @@ neu. **Zählen ist die Vorgabe**, geschrieben wird erst mit `--scharf`.
 
 Die Bildmaße stehen schon in `bild.breite` und `bild.hoehe`; die Dateien
 werden dafür nicht noch einmal gelesen.
+
+---
+
+# Gesichter finden und gruppieren (Phase 9a)
+
+Das erste Modell im Projekt. `CLAUDE.md` hat „keine KI" bis hierher als nicht
+verhandelbar geführt; die Regel ist mit diesem Auftrag ausdrücklich
+**eingegrenzt** worden: Ein Modell entscheidet weiterhin nicht, was verworfen
+oder wie sortiert wird. Es macht Vorschläge, die ein Mensch bestätigt.
+
+    tools/gesichter.sh                    alle noch nicht angesehenen Bilder
+    tools/gesichter.sh --grenze 5000      höchstens so viele (Pilot)
+    tools/gesichter.sh --nur-gruppieren   nichts erkennen, nur Häufchen bilden
+    tools/gesichter.sh --neu-gruppieren   ALLE Häufchen verwerfen und neu bilden
+    tools/gesichter.sh --nur-bericht      Bericht und Bögen, sonst nichts
+
+Von Hand, kein Timer, kein Knopf. Nur einer gleichzeitig (`flock`, wie beim
+Verarbeiten). Jeder Lauf steht in `gesichtslauf` – mit Sekunden je Bild,
+höchster Prozessortemperatur und dem, was er gebildet und zugeordnet hat.
+
+## Aufbau
+
+| | |
+|---|---|
+| `ingest/gesichter.py` | Erkennen, Gruppieren, Bericht, Kontaktbögen – braucht Modell und Datenbank |
+| `ingest/gruppieren.py` | die reine Rechnung: Paare, Häufchen, Mittelvektor, Zuordnung – nur numpy, ohne beides prüfbar |
+| `tools/gesichter.sh` | Sperre, Fadenzahl, Aufruf |
+| `db/migrations/010-gesichter.sql` | `gesicht`, `gruppe`, `person`, `gesichtslauf`, `bild.gesichter_am` |
+| `/data/kajoe_bilder/modelle/insightface/` | die Gewichte – nicht im Repository |
+
+Modell: InsightFace `buffalo_l`, davon werden zwei Netze gebraucht –
+`det_10g` (RetinaFace, findet Kästen und fünf Punkte) und `w600k_r50` (ArcFace,
+512 Werte je Gesicht). Die anderen drei Dateien des Pakets (Alter, Geschlecht,
+3D-Punkte) werden mitgeladen, weil das Paket so kommt, ihre Ergebnisse werden
+nicht gespeichert. Alles läuft über `onnxruntime` auf dem Prozessor, mit
+`opencv-python-headless` – die Fassung ohne `-headless` verlangt `libGL`, das
+auf einem Server ohne Anzeige fehlt.
+
+Gearbeitet wird auf der **Ansichtsfassung** (~1600 px), nicht auf dem Original:
+schneller zu lesen, schon gedreht, schon sRGB. Die Kästen in `gesicht.kasten`
+beziehen sich darauf.
+
+## Zwei Spalten, die nie ineinander überschrieben werden
+
+`gesicht.gruppe_id` ist der Vorschlag der Maschine – ein neuer Lauf darf ihn
+ändern. `gesicht.person_id` ist die Zuordnung eines Menschen (kommt in 9b) –
+ein Lauf schreibt dort **nie**, auch `--neu-gruppieren` nicht. Wer das eine
+mit dem anderen überschreibt, kann später nicht mehr sagen, wie verlässlich
+die Zuordnungen sind.
+
+## Nicht jeder Fund taugt zum Gruppieren
+
+Ein winziges, unscharfes oder weggedrehtes Gesicht liefert einen Vektor, der
+zu allem ein bisschen ähnlich ist. Solche Funde zögen über eine Kette zwei
+Personen zusammen. Deshalb gibt es `SCHWELLEN` in `gesichter.py`, an einer
+Stelle, keine Spalte `tauglich` in der Datenbank (das wäre ein zweiter Ort für
+dieselbe Regel):
+
+| Merkmal | Schwelle | woher |
+|---|---|---|
+| Güte des Detektors | ≥ 0,70 | `det_score` |
+| kürzere Kastenseite | ≥ 40 px | auf der Ansichtsfassung |
+| Schärfe | ≥ 100 | Laplace-Varianz des Ausschnitts |
+| Gieren (Kopf seitlich) | ≤ 35° | Kopfhaltung aus `1k3d68` |
+| Nicken | ≤ 30° | ebenda |
+
+Untaugliche Funde werden **gespeichert** (sie sind ja da), aber nur den
+bestehenden Häufchen **streng** (Kosinus ≥ 0,62 statt 0,55) zugeordnet und
+bilden nie selbst eines.
+
+## Häufchen: gegenseitige Stützen, keine Ketten
+
+Kosinus zwischen zwei L2-normierten Vektoren ist das Skalarprodukt. Ab 0,55
+gelten zwei Funde als Nachbarn. Ein Fund ist ein **Kern**, wenn er mindestens
+zwei Nachbarn hat; nur Kerne verbinden sich zu Häufchen, ein Fund ohne
+Kernstatus hängt sich an den ähnlichsten Kern und verbindet nichts. Das
+kleinste Häufchen sind also drei Funde, die sich gegenseitig stützen. (Das ist
+DBSCAN, ausgeschrieben, damit die Schwellen sichtbar sind.)
+
+**Keine vollständige Abstandsmatrix.** Bei 50.000 Funden wären das 2,5
+Milliarden Werte, 6,4 GB als `float32` – mehr, als der Rechner hat, wenn
+daneben noch etwas läuft. Gerechnet wird in Blöcken von 1.000 Zeilen gegen
+alle Spalten, behalten werden nur Paare über der Schwelle. Gemessen an
+erfundenen Vektoren: +15 MB bei 5.000, +61 MB bei 20.000, +77 MB bei 40.000 –
+linear, nicht quadratisch. **Kein pgvector**, aus demselben Grund wie kein
+PostGIS für die Karte.
+
+Die Rechnung wurde an erfundenen Personen geprüft, bevor ein echtes Bild
+durchlief: 40 Personen, 6.000 Vektoren, Streuung so, dass der Kosinus innerhalb
+einer Person bei etwa 0,68 liegt → **40 Häufchen, keines vermischt, keiner
+allein.** Streut man weiter, bis der Kosinus innerhalb einer Person unter die
+Schwelle fällt, entstehen keine falschen Häufchen – die Funde bleiben allein.
+Das ist die gewünschte Richtung: lieber ein Gesicht nicht zugeordnet als zwei
+Personen in einem Häufchen.
+
+> Der erste Versuch dieser Prüfung ergab 0 Häufchen und sah aus wie ein Fehler
+> in der Rechnung. Er war ein Fehler in der Prüfung: Rauschen mit Streuung 0,3
+> je Koordinate hat in 512 Dimensionen die Länge 0,3 · √512 ≈ 6,8 – das
+> Sechsfache des Signals. Der Kosinus zwischen zwei Funden derselben Person lag
+> dann bei 0,02. Wer in hohen Dimensionen Rauschen dazugibt, muss es durch √n
+> teilen.
+
+## Ein zweiter Lauf tut, was man erwartet
+
+Ein Bild gilt als angesehen, sobald `bild.gesichter_am` steht – **auch, wenn
+kein Gesicht darauf war.** Ohne diese Markierung müsste ein zweiter Lauf
+raten, welche Bilder er schon hatte, und „kein Gesicht gefunden" sähe aus wie
+„noch nicht angesehen". Der Lauf nimmt deshalb nur Bilder ohne diesen
+Zeitpunkt, in zufälliger Reihenfolge (`md5(sha256)`), damit ein Pilot über
+5.000 Bilder quer durch alle Jahrgänge geht und nicht nur durch 2019.
+
+Nach dem Erkennen kommt das Gruppieren in drei Schritten:
+
+- **A** – taugliche neue Funde gegen die Mittelvektoren der bestehenden
+  Häufchen (≥ 0,55): angehängt, Häufchen wächst, Mittelvektor rückt nach
+- **B** – die übrigen tauglichen Funde untereinander: neue Häufchen
+- **C** – untaugliche Funde gegen die Mittelvektoren, streng (≥ 0,62)
+
+Bestehende Mitgliedschaften fasst ein normaler Lauf **nicht** an. Nur
+`--neu-gruppieren` löscht alle `gruppe_id` (nicht `person_id`) und alle
+Häufchen und beginnt bei B.
+
+Ein Lauf schreibt seine Prozessnummer und die Bootkennung in `gesichtslauf`.
+Bleibt eine Zeile auf `laeuft` stehen, deren Prozess weg ist – Neustart
+dazwischen –, setzt der nächste Lauf sie auf `abgebrochen`; wie bei
+`verarbeitung`.
+
+## Temperatur
+
+Der Auftrag sagt „wie beim Ableitungslauf mitmessen". Der Ableitungslauf
+**dieses** Projekts misst keine Temperatur – das tut der auf `hunter`, und
+dorthin wird nicht geschaut. Gemessen wird hier deshalb selbst:
+`/sys/class/thermal/*/temp` mit `type = x86_pkg_temp`, alle hundert Bilder,
+das Maximum landet in `gesichtslauf.temperatur_max`. Die Fadenzahl steht auf
+zehn (`OMP_NUM_THREADS` in `tools/gesichter.sh`), zwei bleiben für
+Weboberfläche und Ingest.
+
+## Was geprüft wurde (Pilot am 03.09.2026)
+
+**5.000 Bilder, zufällig quer durch alle Jahrgänge**, mit zehn Fäden auf dem
+i7-8700T:
+
+| | |
+|---|---|
+| Dauer | 25,3 min, **302 ms je Bild** (99 ms ohne Gesicht, etwa 195 ms je Gesicht dazu) |
+| Prozessortemperatur | höchstens 79 °C (Paket); im Leerlauf 36 °C |
+| Speicher | 884 MB nach dem Laden des Modells, 932 MB Spitze – das Gruppieren kostet darüber hinaus nichts Messbares |
+| Bilder mit Gesicht | 1.889 von 5.000 (38 %) |
+| Funde | 4.001, davon 1.800 tauglich (45 %) |
+| Häufchen | 45; fünf davon mit mehr als 100 Funden, 23 mit drei bis fünf |
+| in einem Häufchen | 1.786 Funde (45 %), 2.187 allein |
+
+Hochgerechnet auf die 37.000 noch offenen Bilder: **etwa 3 Stunden**, nicht
+die zwölf bis dreißig aus dem Auftrag. Das Modell ist auf diesem Prozessor
+schneller als angenommen, und 62 % der Bilder haben gar kein Gesicht.
+
+**Die zwanzig größten Häufchen, alle angesehen.** Neunzehn zeigen je eine
+Person – über Jahre hinweg, mit Brille und ohne, Kind und Jugendliche
+derselben Person im selben Häufchen (2016 bis 2024). Zwei Einzelkacheln in
+zwei kleinen Häufchen sind unsicher (eine dunkle Seitenansicht, ein
+Porträtfoto); keine Kachel ist eindeutig falsch. **Das drittgrößte Häufchen
+(324 Funde) ist ein Hund.** Der Detektor hält das Labradorgesicht für ein
+Gesicht, und der Vektor ist sogar in sich stimmig – alle 324 sind derselbe
+Hund. Das bleibt so: ein Mensch benennt das Häufchen in 9b mit dem Namen des
+Hundes oder lässt es liegen. Aussortieren wäre genau das, was das Modell nicht
+darf.
+
+**Wiederholbarkeit, an der Datenbank nachgeprüft** (Stände vor und nach jedem
+Lauf als Tabellen abgezogen und verglichen, nicht nur die Ausgabe gelesen):
+
+| Prüfung | Ergebnis |
+|---|---|
+| zweiter Lauf über denselben Bestand | 0 doppelte Funde (Bild + Kasten), 0 neue Häufchen, **0 Wechsel** eines Funds von einem Häufchen in ein anderes |
+| 300 weitere Bilder | 213 Funde; 91 an bestehende Häufchen, 27 in neun neue; bestehende Zugehörigkeit unverändert |
+| `person_id` von Hand gesetzt, dann Nachzügler und `--neu-gruppieren` | in beiden Fällen unverändert; Prüfperson danach wieder entfernt |
+| `--neu-gruppieren` über den ganzen Stand | 54 Häufchen – dieselbe Zahl wie 45 aus dem Piloten plus 9 aus den Nachzüglern |
+
+**Ein Fehler kam dabei heraus.** Der zweite Lauf über denselben Bestand
+ordnete 42 Funde zu, die der erste liegen gelassen hatte: taugliche Funde, die
+in B keinen Kern fanden, wurden nie gegen die **eben gebildeten** Häufchen
+gehalten – das tat erst Schritt A des nächsten Laufs. Ein Lauf soll aber fertig
+sein, wenn er fertig ist. Deshalb gibt es jetzt **Schritt B2**: die allein
+gebliebenen tauglichen Funde gegen alle Häufchen. Danach ordnet ein
+Wiederholungslauf nur noch das zu, was durch das Nachrücken der Mittelvektoren
+neu über die Schwelle rutscht – gemessen 5 + 3 Funde beim ersten, das ist
+Drift, kein Fehler.
+
+**Während der Prüfung sank der Bestand von 4.186 auf 3.855 Funde.** Das war
+kein Datenverlust: parallel wurden in der Oberfläche 5.985 Bilder zum Löschen
+vorgemerkt, 679 davon hatte der Pilot schon angesehen. Ihre 359 Funde stehen
+weiter in `gesicht`, zählen aber nicht mehr – alle Abfragen des Laufs und des
+Berichts hängen an `bild.geloescht_am IS NULL`, wie überall sonst.
+
+**Die Schwellen bleiben, wie sie vor dem Piloten standen.** Die Bögen geben
+keinen Anlass, sie zu verschieben: keine vermischten Häufchen, also ist 0,55
+nicht zu locker; und die fünf großen Häufchen decken ihre Personen über zehn
+Jahre ab, also ist es nicht zu streng. Dass 55 % der Funde allein bleiben, ist
+gewollt – die meisten davon sind untauglich (klein, unscharf, weggedreht), und
+ein Häufchen aus zwei Funden gibt es mit Absicht nicht.

@@ -113,7 +113,10 @@ falsch geworden ist.
 | 6 | Jahresfreischaltung je Benutzer | **fertig** |
 | 7 | Aufräumen und Systempflege automatisieren | **fertig** (Neustart steht aus) |
 | 8 | Mehrjahresfilter, von der Karte in die Galerie | **fertig** |
-| 9 | Cloudflare Tunnel | offen |
+| – | Nachträge: Plattenumzug, Bildschirmfotos als Herkunft | **fertig** |
+| 9a | Gesichter finden und gruppieren, ohne Oberfläche | **Pilot** |
+| 9b | Benennen und Suchen nach Personen | offen |
+| 10 | Cloudflare Tunnel | offen |
 
 Die Nummern folgen den Auftragsdateien in `docs/`. Gegenüber der ursprünglichen
 Planung ist eine Phase dazugekommen – das Anstoßen der Verarbeitung aus der
@@ -200,11 +203,30 @@ gilt, ist offen und wird bei der nächsten Messung geprüft.
 
 ### Herkunft statt Objekterkennung
 
-**Es gibt keine KI in diesem Projekt.** Der ursprüngliche Entwurf sah einen Detektor
-für Personen und Tiere vor. Er ist gestrichen, aus zwei Gründen: Er hätte jedes
-Landschaftsbild weggeworfen – also gerade die Kalendermotive –, und ein
-deterministisches Merkmal ist einem Modell überlegen, wenn es verfügbar ist.
-`Make = Apple` ist wahr oder falsch, kostet Millisekunden und irrt sich nie.
+**Kein Modell entscheidet, was verworfen oder wie sortiert wird.** Der ursprüngliche
+Entwurf sah einen Detektor für Personen und Tiere vor, der aussortiert. Er ist
+gestrichen, aus zwei Gründen: Er hätte jedes Landschaftsbild weggeworfen – also gerade
+die Kalendermotive –, und ein deterministisches Merkmal ist einem Modell überlegen,
+wenn es verfügbar ist. `Make = Apple` ist wahr oder falsch, kostet Millisekunden und
+irrt sich nie. Herkunft, Dubletten, Bildschirmfotos, Zeit, Ort – alles daran bleibt
+deterministisch.
+
+> Bis Phase 9 hieß dieser Absatz „Es gibt keine KI in diesem Projekt" und stand so
+> unter den nicht verhandelbaren Entscheidungen. Er ist mit Phase 9a **eingegrenzt**
+> worden, nicht gestrichen: Ein Modell darf **Vorschläge** machen, die ein Mensch
+> bestätigt – Gesichter finden und zu Häufchen gruppieren. Es darf nichts wegwerfen
+> und nichts umsortieren. Was ein Modell vorschlägt und was ein Mensch bestätigt,
+> steht in getrennten Spalten (`gesicht.gruppe_id` gegen `gesicht.person_id`) und
+> wird nie ineinander überschrieben – sonst ist später nicht mehr nachvollziehbar,
+> wie verlässlich die Zuordnungen sind.
+>
+> **Modell und Lizenz:** InsightFace `buffalo_l` (RetinaFace-Detektor `det_10g`,
+> ArcFace-Vektor `w600k_r50`) über `onnxruntime`, lokal auf dem Prozessor. Kein Bild
+> verlässt den Server. Die vortrainierten Gewichte sind **für Forschung und
+> nicht-kommerzielle Nutzung** freigegeben – anders als Apache-2.0-Modelle. Für ein
+> privates Familienarchiv im Haushalt ist das gedeckt; eine kommerzielle Nutzung
+> wäre es nicht. Die Gewichte liegen unter `/data/kajoe_bilder/modelle/`, nicht im
+> Repository.
 
 Fünf Werte in `bild.herkunft` – seit Migration 009 sind es wirklich fünf:
 

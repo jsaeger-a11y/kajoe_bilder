@@ -9,3 +9,9 @@ pillow-heif==1.5.0
 # pyvips[binary]==3.2.0
 
 # Ausserhalb von pip: exiftool 13.50 und ffmpeg 8.0.1 aus den Paketquellen.
+
+# Phase 9a – Gesichter. Nur -headless: die andere opencv-Fassung verlangt libGL.
+# Die Modellgewichte kommen NICHT per pip, sie liegen unter /data/kajoe_bilder/modelle/.
+insightface==1.0.1
+onnxruntime==1.29.0
+opencv-python-headless==5.0.0.93

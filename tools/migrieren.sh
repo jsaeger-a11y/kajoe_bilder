@@ -88,7 +88,13 @@ for DATEI in db/migrations/[0-9][0-9][0-9]-*.sql; do
     fi
 
     echo "→ $NAME"
-    BEGINN=$(date +%s%3N)
+    # Kein `date +%s%3N`: das ist GNU-Syntax, und `date` ist hier uutils
+    # coreutils. Dort liefert %3N keine Millisekunden, sondern eine achtstellige
+    # Zahl – die Differenz zweier solcher Werte sprengte am 02.09.2026 den
+    # INTEGER von dauer_ms, die Migration war eingespielt, aber nicht
+    # verbucht, und der naechste Lauf haette sie ein zweites Mal versucht.
+    # $EPOCHREALTIME ist bash selbst, Mikrosekunden, ueberall gleich.
+    BEGINN=${EPOCHREALTIME/./}
 
     # ON_ERROR_STOP: ohne den Schalter meldet psql einen Fehler und macht
     # weiter – am Ende steht ein halbes Schema und der Rueckgabewert ist 0.
@@ -98,7 +104,7 @@ for DATEI in db/migrations/[0-9][0-9][0-9]-*.sql; do
         exit 1
     fi
 
-    DAUER=$(( $(date +%s%3N) - BEGINN ))
+    DAUER=$(( (${EPOCHREALTIME/./} - BEGINN) / 1000 ))
 
     # Ab jetzt existiert die Tabelle in jedem Fall.
     TABELLE_DA=$(psql_still -c \
