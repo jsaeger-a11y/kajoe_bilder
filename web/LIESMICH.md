@@ -1059,3 +1059,205 @@ In der Galerie steht sichtbar, dass ein Kartenausschnitt filtert, mit dem Weg
 zurück zur Karte und einem „Ausschnitt aufheben". Dass Aufnahmen **ohne Ort**
 dabei nicht erscheinen, steht dabei – richtig, aber überraschend, wenn es
 niemand sagt.
+
+---
+
+# Personen benennen und finden (Phase 9b)
+
+9a hat Häufchen gebildet – Vorschläge der Maschine. Hier bekommen sie Namen,
+und danach findet man alle Aufnahmen einer Person.
+
+| Adresse | was |
+|---|---|
+| `/personen` | die benannten Personen, mit Beispielgesichtern und dem Weg in die Galerie |
+| `/personen/<id>` | eine Person: ihre Häufchen, umbenennen, auflösen |
+| `/haeufchen` | die **offenen** Häufchen, grösste zuerst |
+| `/haeufchen/benannt` | benannte Häufchen – hier stehen die neuen Funde nach einem Lauf |
+| `/haeufchen/abgelegt` | was als unwichtig weggelegt wurde |
+| `/haeufchen/<id>` | ein Häufchen: alle Funde, die drei Wege, Nachbessern |
+| `/gesicht/<id>` | ein Gesichtsausschnitt als JPEG |
+
+## Ansehen ist ein Recht, Benennen ist es nicht
+
+`gesichter` ist ein Recht wie `karte`, Vorgabe aus. Damit lässt sich jemandem
+ein Jahrgang für den Kalender freigeben, ohne ihm zugleich die Personensuche zu
+geben – „zeig mir alle Aufnahmen von X über elf Jahrgänge" ist etwas anderes
+als Bilder ansehen.
+
+**Benennen darf nur ein Verwalter, und dafür gibt es bewusst keine Kennung in
+`RECHTE`.** Ein Recht, das in der Liste steht, lässt sich einzeln verteilen –
+und genau das soll hier nicht gehen: wer Namen vergibt, legt fest, wer im
+Archiv namentlich auffindbar ist, und das berührt Rechte Dritter.
+
+Geprüft wird in jeder Seite (`verlangeRecht("gesichter")`), jeder Action
+(`aktionVerwalter()`) und der Bildroute. Ein Betrachter **mit** dem Recht sieht
+die Personen und wird trotzdem abgewiesen, wenn er eine Action von Hand
+anspricht – nachgemessen, siehe unten.
+
+## Eine Stelle, an der steht, wer auf einem Bild ist
+
+Massgeblich ist **`gesicht.person_id`**, und sonst nichts. Es gibt bewusst
+**keine Spalte `gruppe.person_id`**: wem ein Häufchen gehört, ergibt sich aus
+seinen Funden und wird in `web/src/lib/personen.ts` einmal ausgerechnet. Zwei
+Fässer derselben Wahrheit laufen auseinander – in diesem Projekt schon dreimal
+passiert (`DATABASE_URL`, die Herkunftsregel, die Zellrechnung der Karte).
+
+Der zweite Gewinn: `tools/gesichter.sh --neu-gruppieren` darf alle Häufchen
+verwerfen, ohne dass eine einzige menschliche Zuordnung fällt.
+
+Ein Häufchen ist damit
+
+    offen      zustand = 'offen' und kein sichtbarer Fund trägt eine Person
+    benannt    mindestens ein sichtbarer Fund trägt eine Person
+    abgelegt   zustand = 'unwichtig'
+
+## Der Lauf schreibt niemals einen Namen
+
+CLAUDE.md sagt: `person_id` ist die menschliche Spalte, ein Lauf fasst sie nie
+an. Das hat eine Folge, die man kennen muss: **nach jedem Lauf hängen an einem
+benannten Häufchen neue Funde ohne Person.** Sie würden sonst in der Galerie
+unter dieser Person fehlen.
+
+Deshalb zeigt `/haeufchen/benannt` sie als „N neu" an, und ein Knopf übernimmt
+sie für die Person des Häufchens. **Das ist Absicht und kein Umweg:** genau
+dabei sieht man, ob die Maschine einen Fremden in „Oma" gelegt hat. Im Prüflauf
+kamen nach einem gewöhnlichen Nachlauf sieben neue Funde in einem benannten
+Häufchen an – der Fall ist real, nicht theoretisch.
+
+Beim „Unwichtig" ist es anders herum: die Entscheidung hängt am Häufchen, nicht
+am Fund. Ein neues Gesicht, das dazu passt, taucht deshalb **nicht** wieder als
+offene Frage auf – sonst legte man dieselbe Nachbarin jedes Jahr aufs Neue weg.
+
+## Zusammenführen heisst: derselbe Name, nicht dasselbe Häufchen
+
+Zwei Häufchen derselben Person bekommen dieselbe Person zugeordnet. Die
+Häufchen bleiben getrennt: sie sind der Vorschlag der Maschine, und den gibt es
+weiter unverändert. Bei Kindern ist das der Normalfall – mit sechs sieht jemand
+anders aus als mit vierzehn.
+
+## Ein Gesicht herausnehmen, ohne es zu verlieren
+
+`gesicht.ausgenommen_am` setzen, `person_id` leeren – und **`gruppe_id` stehen
+lassen**. Ohne die Gruppenkennung wäre der Fund unauffindbar und die Rücknahme
+unmöglich. Gezählt wird er nirgends mehr, `ingest/gesichter.py` fasst ihn nicht
+mehr an (weder zum Zuordnen noch für den Mittelvektor), und die Häufchenansicht
+zeigt ihn unten unter „Herausgenommen" mit einem Knopf zurück.
+
+Ein blosses Zurücksetzen von `gruppe_id` hätte nicht gereicht: der nächste Lauf
+sucht sich genau die Funde ohne Häufchen und legte dasselbe fremde Gesicht
+wieder dazu.
+
+## Der Personenfilter hängt an der Sicht, nicht an der Aufrufstelle
+
+`Sicht` hat ein Feld `gesichter` bekommen. `bedingung()` in `galerie.ts` wendet
+`person=<id>` nur an, wenn es gesetzt ist. Dass die Filterzeile ohne das Recht
+nicht erscheint, ist **keine** Prüfung – eine Adresse tippt man. Und weil
+`Sicht` an jeder Aufrufstelle Pflicht ist, kann eine neue Abfrage die Prüfung
+nicht auslassen.
+
+Gefiltert wird mit `EXISTS`, nicht mit einem `JOIN`: ein Bild zeigt mehrere
+Personen, ein JOIN vervielfachte die Zeilen und damit jede Trefferzahl. „X und
+Y zusammen" ist damit später ein zweites `EXISTS` mit UND daneben – die
+Erweiterung aus dem Auftrag bleibt möglich, ohne die Abfrage umzubauen.
+
+## Die Ausschnitte kommen aus der Ansicht, mit `sharp`
+
+`/gesicht/<id>` schneidet aus der Ansichtsfassung (~1600 px) ein Quadrat um den
+gespeicherten Kasten, mit halber Kastenbreite Rand herum – der Detektorkasten
+sitzt eng, Stirn und Kinn fehlen sonst. 200 px, JPEG 82, gemessen 10 ms und
+7,3 kB je Kachel.
+
+Nicht aus dem Original: das ist HEIC und wäre eine halbe Sekunde Dekodieren für
+ein Bild von 200 Punkten. `sharp` steht jetzt ausdrücklich in `package.json` –
+es lag ohnehin da, weil Next es als optionale Abhängigkeit mitbringt, aber
+etwas, worauf man sich verlässt, gehört in die eigene Liste.
+
+## Eine LATERAL-Unterabfrage, die 19 Sekunden kostete
+
+Die Person eines Häufchens war zuerst eine `LEFT JOIN LATERAL`-Unterabfrage.
+Die lief **je Häufchen einmal** über alle 30.700 Funde: eine Seite brauchte
+19 Sekunden. Als Aggregat – `mode() WITHIN GROUP (ORDER BY person_id)`, das
+NULL-Werte übergeht – ist es ein einziger Durchgang: **43 ms**, 442-mal
+schneller.
+
+Dieselbe Falle steckte in der Unterleiste: sie rief dreimal die Listenabfrage
+auf, um drei Zahlen zu bekommen. Jetzt ist es eine Abfrage über alle Häufchen.
+
+Gemessene Ladezeiten am vollen Bestand (30.700 Funde, 264 Häufchen):
+
+| Seite | Zeit |
+|---|---|
+| `/personen` | 0,03 s |
+| `/haeufchen` | 0,05 s |
+| `/haeufchen/<id>` (3.187 Funde) | 0,07 s |
+| `/gesicht/<id>` | 0,01 s |
+
+## Was geprüft wurde
+
+Alles am **vollen Bestand** (40.933 sichtbare Aufnahmen, 30.700 Funde, 264
+Häufchen), gegen die Datenbank gemessen – nicht gegen die Antwort der
+Anwendung. Die Server Actions wurden dabei genau so aufgerufen wie der Browser
+sie aufruft: die Formulare ohne JavaScript über ihr verstecktes
+`$ACTION_ID_…`-Feld, die Formulare mit Rückmeldung über Reacts eigenes
+`encodeReply` und den Kopf `Next-Action`.
+
+**Zugriff**, vier Konten nebeneinander:
+
+| Adresse | ohne Recht | mit `gesichter` | nur 2024 | Verwalter |
+|---|---|---|---|---|
+| `/personen`, `/haeufchen`, `/haeufchen/<id>` | 404 | 200 | 200 | 200 |
+| `/gesicht/<id>` (Fund aus 2022) | 403 | 200 | **404** | 200 |
+| ohne Anmeldung | 307 zur Anmeldung, Bildroute 401 | | | |
+
+Der Menüpunkt „Personen" steht nur bei den Berechtigten in der Kopfleiste.
+Recht entzogen → sofort wieder 404 und 403, wieder erteilt → sofort wieder 200;
+ohne Neuanmeldung, weil bei jedem Aufruf in der Datenbank nachgesehen wird.
+
+**Die Actions von Hand angesprochen**, mit gültiger Sitzung und richtiger
+Action-Kennung:
+
+| wer | Ergebnis |
+|---|---|
+| Betrachter **mit** `gesichter` → „Gesicht herausnehmen" | abgewiesen, `ausgenommen_am` blieb NULL |
+| Betrachter **mit** `gesichter` → „Häufchen ablegen" | abgewiesen, `zustand` blieb `offen` |
+| Betrachter ohne Recht | abgewiesen |
+| ohne Anmeldung | abgewiesen |
+| Verwalter | ausgeführt, `ausgenommen_von` = 1 vermerkt |
+
+Abgewiesen heisst hier HTTP 500: eine Action, die wirft, endet in Next so. Das
+ist das Muster des ganzen Projekts (`listeLoeschen` wirft ebenso). Wichtig ist,
+was **nicht** passiert ist – die Datenbank blieb unberührt.
+
+**Die Arbeitsschritte**, an einem Häufchen mit 3.187 Funden:
+
+| Prüfung | Ergebnis |
+|---|---|
+| Häufchen benennen | alle 3.187 Funde tragen die Person, `angelegt_von` vermerkt |
+| Zahl in der Personenliste | 3.174 = Datenbank (die 13 übrigen Funde liegen auf vorgemerkten Bildern) |
+| zweites Häufchen derselben Person | 3.174 → 5.063, genau die Vereinigung beider Häufchen; die Person hat jetzt zwei Häufchen |
+| Galerie `person=X` | 5.062 = Datenbank |
+| Konto, das nur 2024 darf | 459 statt 5.062, und keine einzige der 60 Kacheln aus einem anderen Jahr |
+| `person=X` **ohne** das Recht | Filter greift nicht: 40.933 statt 5.062, und der Name steht nirgends auf der Seite |
+| ein Gesicht herausnehmen | Vermerk gesetzt, Person entfernt, **`gruppe_id` bleibt**, Person zählt eins weniger |
+| **danach `tools/gesichter.sh --nur-gruppieren`** | Vermerk überlebt, keine Person, dasselbe Häufchen – der Lauf ordnet ihn **nicht** wieder zu |
+| Häufchen ablegen | verschwindet aus den offenen, steht in der Ablage, 2.514 Funde vollständig da |
+| zurückholen | wieder in den offenen |
+| Gesicht zurückholen | sofort wieder im Häufchen |
+| Bild zum Löschen vormerken | Person zählt eins weniger, Seite zeigt die neue Zahl, `/gesicht/<id>` liefert **404** |
+| Person auflösen | Person weg, 0 Zuordnungen, **kein Bild gelöscht**, 5.942 Funde behielten ihre Häufchen, das Häufchen steht wieder als offene Frage |
+
+Derselbe Nachlauf hat nebenbei **7 neue Funde** in das benannte Häufchen
+gelegt – der Fall „ein Lauf schreibt keinen Namen" ist damit an echten Daten
+belegt und nicht nur beschrieben.
+
+Nach dem Prüflauf war der Bestand wieder im Ausgangszustand: 0 Personen, 0
+Zuordnungen, 0 herausgenommene Funde, 0 abgelegte Häufchen, 264 offene.
+
+**Was NICHT geprüft werden konnte: die Bedienung auf dem Telefon.** Von hier
+aus gibt es kein Gerät. Geprüft ist nur, was sich ohne Gerät prüfen lässt: der
+Viewport steht auf `width=device-width`, die Anwendung ist über
+`http://webspace:3000` im lokalen Netz erreichbar, das Raster fällt unter
+34 rem auf zwei (Häufchen) beziehungsweise drei Spalten (Funde), die kleinen
+Knöpfe bekommen bei Fingerbedienung 2,75 rem Höhe und volle Breite, und die
+Personenauswahl ist eine echte `<select>`-Liste, also der native Auswähler.
+**Ob das reicht, muss jemand am Gerät sagen.**

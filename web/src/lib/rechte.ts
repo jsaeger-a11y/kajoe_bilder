@@ -20,13 +20,29 @@
  * verorteten Aufnahmen liegen in einem Umkreis von fuenfzig Metern um
  * denselben Punkt. Wer die Karte aufmacht, sieht sofort, wo gewohnt wird.
  */
-export const RECHTE = ["loeschen", "karte"] as const;
+/**
+ * `gesichter` ist aus demselben Grund ein Recht wie `karte`.
+ *
+ * Wer die Personensuche hat, kann fragen "zeig mir alle Aufnahmen von X" – ueber
+ * elf Jahrgaenge, auch die, in denen X ein Kind war. Das ist etwas anderes als
+ * Bilder ansehen, und es soll getrennt vergeben werden koennen: jemand bekommt
+ * fuer den Kalender einen Jahrgang frei, ohne damit das Archiv nach Personen
+ * durchsuchen zu koennen. Vorgabe ist deshalb aus.
+ *
+ * **Ansehen ist ein Recht, Benennen ist es nicht.** Namen vergeben darf nur ein
+ * Verwalter, und dafuer gibt es bewusst KEINE Kennung in dieser Liste – sonst
+ * liesse sich das Recht einzeln verteilen, und genau das soll nicht gehen. Wer
+ * benennt, legt fest, wer im Archiv namentlich auffindbar ist; das beruehrt
+ * Rechte Dritter, und darueber entscheidet nicht jeder fuer sich.
+ */
+export const RECHTE = ["loeschen", "karte", "gesichter"] as const;
 
 export type Recht = (typeof RECHTE)[number];
 
 export const RECHT_TEXT: Record<Recht, string> = {
   loeschen: "Bilder zum Löschen vormerken",
   karte: "Aufnahmeorte auf der Karte sehen",
+  gesichter: "Erkannte Personen sehen und nach ihnen suchen",
 };
 
 export function istRecht(wert: string): wert is Recht {

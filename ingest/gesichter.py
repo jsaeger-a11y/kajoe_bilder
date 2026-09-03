@@ -249,6 +249,12 @@ def _lade(conn, nur_ohne_gruppe: bool):
             f"""SELECT g.id::int, g.vektor, g.guete, g.groesse, g.schaerfe, g.nick, g.gier
                   FROM gesicht g JOIN bild b ON b.id = g.bild_id
                  WHERE b.geloescht_am IS NULL
+                   -- Von Hand aus einem Haeufchen genommen (Phase 9b,
+                   -- Migration 011). Ohne diese Zeile suchte der Lauf sich
+                   -- genau diese Funde – sie haben ja kein Haeufchen – und
+                   -- legte das fremde Gesicht wieder dazu. Ein Mensch haette
+                   -- dann dieselbe Korrektur nach jedem Lauf erneut zu machen.
+                   AND g.ausgenommen_am IS NULL
                    {"AND g.gruppe_id IS NULL" if nur_ohne_gruppe else ""}
                  ORDER BY g.id""",
         )
@@ -291,6 +297,12 @@ def _gruppen_nachfuehren(conn) -> None:
             """SELECT g.gruppe_id::int, g.id::int, g.vektor, g.guete, g.groesse
                  FROM gesicht g
                 WHERE g.gruppe_id IS NOT NULL
+                  -- Von Hand herausgenommen (9b): der Fund BLEIBT im Haeufchen
+                  -- stehen, damit die Ruecknahme moeglich ist und er nicht
+                  -- unauffindbar wird – aber er zaehlt nicht mehr mit. Sonst
+                  -- verzoege genau das fremde Gesicht, das jemand entfernt hat,
+                  -- weiter den Mittelvektor und zoege aehnliche Fremde nach.
+                  AND g.ausgenommen_am IS NULL
                 ORDER BY g.gruppe_id""",
         )
         zeilen = cur.fetchall()
@@ -317,6 +329,16 @@ def _gruppen_nachfuehren(conn) -> None:
         # Haeufchen ohne Mitglieder (nach --neu-gruppieren) verschwinden.
         cur.execute("DELETE FROM gruppe WHERE NOT EXISTS "
                     "(SELECT 1 FROM gesicht WHERE gesicht.gruppe_id = gruppe.id)")
+        # Ein Haeufchen, von dem nur ausgenommene Funde uebrig sind, steht oben
+        # nicht in `je_gruppe` und behielte seine alte Groesse. Es wird hier
+        # nachgezogen und NICHT geloescht: die Ruecknahme soll moeglich bleiben.
+        cur.execute(
+            """UPDATE gruppe SET groesse = 0, aktualisiert_am = now()
+                WHERE NOT EXISTS (SELECT 1 FROM gesicht
+                                   WHERE gesicht.gruppe_id = gruppe.id
+                                     AND gesicht.ausgenommen_am IS NULL)
+                  AND groesse <> 0""",
+        )
 
 
 def gruppieren_lauf(conn, lauf_id: int, neu: bool) -> tuple[int, int, int]:
@@ -327,11 +349,22 @@ def gruppieren_lauf(conn, lauf_id: int, neu: bool) -> tuple[int, int, int]:
         # Vollstaendig neu – nur auf ausdruecklichen Wunsch. person_id bleibt:
         # das ist die menschliche Spalte, hier wird nur der Maschinenvorschlag
         # verworfen.
+        #
+        # Was dabei aber SEHR WOHL verlorengeht, sind die Ablage-Entscheidungen
+        # aus 9b: `gruppe.zustand = 'unwichtig'` haengt am Haeufchen, und das
+        # Haeufchen wird hier geloescht. Wer die Nachbarin einmal weggelegt hat,
+        # bekaeme sie danach wieder als offene Frage vorgelegt. Deshalb wird
+        # gezaehlt und gemeldet, statt es geschehen zu lassen.
         with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM gruppe WHERE zustand = 'unwichtig'")
+            abgelegt = cur.fetchone()[0]
             cur.execute("UPDATE gesicht SET gruppe_id = NULL, gruppe_aehnlichkeit = NULL")
             cur.execute("UPDATE gruppe SET vertreter_id = NULL")
             cur.execute("DELETE FROM gruppe")
         print("  alle Haeufchen verworfen (person_id unangetastet)")
+        if abgelegt:
+            print(f"  ACHTUNG: {abgelegt} als unwichtig abgelegte(s) Haeufchen ist damit "
+                  f"weg – diese Funde kommen wieder als offene Frage")
 
     ids, v, ok = _lade(conn, nur_ohne_gruppe=True)
     print(f"  {len(ids)} Fund(e) ohne Haeufchen, davon {int(ok.sum())} tauglich")
@@ -527,7 +560,7 @@ def blaetter(conn, belege: int = 20, je_blatt: int = 24) -> int:
                 """SELECT f.kasten, b.jahr, b.monat, b.sha256, f.gruppe_aehnlichkeit,
                           f.guete, f.groesse, b.aufnahme_lokal::date
                      FROM gesicht f JOIN bild b ON b.id = f.bild_id
-                    WHERE f.gruppe_id = %s
+                    WHERE f.gruppe_id = %s AND f.ausgenommen_am IS NULL
                     ORDER BY f.gruppe_aehnlichkeit DESC""", (gid,))
             alle = cur.fetchall()
         schritt = max(1, len(alle) // je_blatt)

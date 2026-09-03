@@ -8,6 +8,7 @@ import { unveraendert } from "@/lib/herunterladen";
 import { karteAusschnitt } from "@/lib/karte";
 import { eigeneListen, inWievielenListen } from "@/lib/listen";
 import { auswahlAusSuche, auswahlteile, istMarkiert, umschalten } from "@/lib/markierung";
+import { personenDesBildes } from "@/lib/personen";
 import { LOESCHFRIST_TAGE } from "@/lib/rechte";
 import { sichtVon, sichtbar } from "@/lib/sichtbar";
 import { darf, verlangeAnmeldung } from "@/lib/zugriff";
@@ -95,10 +96,13 @@ export default async function Einzelansicht({
 
   // Geblaettert wird INNERHALB der gefilterten Menge. Sonst springt man aus der
   // Auswahl heraus, in der man gerade sucht.
-  const [rundum, listen, inListenAnzahl] = await Promise.all([
+  const [rundum, listen, inListenAnzahl, erkannte] = await Promise.all([
     nachbarn(filter, sicht, b.aufnahme_lokal, b.id),
     eigeneListen(wer.benutzerId, sicht),
     inWievielenListen(b.id),
+    // Gibt ohne das Recht `gesichter` eine leere Liste zurueck – die Pruefung
+    // steckt in `sicht`, nicht in einer Bedingung an dieser Stelle.
+    personenDesBildes(b.id, sicht),
   ]);
   const zusatz = auswahlteile(auswahl);
   const anhang = suchtext(filter, {}, zusatz);
@@ -286,6 +290,20 @@ export default async function Einzelansicht({
                 "keine Koordinate in der Datei"
               )}
             </dd>
+
+            {erkannte.length ? (
+              <>
+                <dt>Erkannt</dt>
+                <dd>
+                  {erkannte.map((p, i) => (
+                    <span key={p.id}>
+                      {i > 0 ? ", " : ""}
+                      <Link href={`/personen/${p.id}`}>{p.name}</Link>
+                    </span>
+                  ))}
+                </dd>
+              </>
+            ) : null}
 
             <dt>Eingelesen</dt>
             <dd className="leise">{zeitstempel(b.eingelesen_am)} UTC</dd>

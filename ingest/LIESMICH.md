@@ -781,3 +781,27 @@ nicht zu locker; und die fünf großen Häufchen decken ihre Personen über zehn
 Jahre ab, also ist es nicht zu streng. Dass 55 % der Funde allein bleiben, ist
 gewollt – die meisten davon sind untauglich (klein, unscharf, weggedreht), und
 ein Häufchen aus zwei Funden gibt es mit Absicht nicht.
+
+## Was Phase 9b am Lauf geändert hat
+
+Mit dem Benennen (9b) kann ein Mensch ein einzelnes Gesicht aus einem Häufchen
+nehmen. Der Lauf muss das respektieren, sonst wäre dieselbe Korrektur nach
+jedem Lauf erneut fällig:
+
+- **`_lade` überspringt Funde mit `ausgenommen_am`.** Ohne diese Zeile suchte
+  der Lauf sich genau diese Funde – sie haben ja kein Häufchen mehr, aus seiner
+  Sicht – und legte das fremde Gesicht wieder dazu.
+- **`_gruppen_nachfuehren` rechnet sie nicht mit.** Der Fund bleibt mit seiner
+  `gruppe_id` stehen (nur so ist er auffindbar und die Rücknahme möglich), aber
+  er darf den Mittelvektor nicht mehr verziehen – sonst zöge genau das
+  entfernte fremde Gesicht weitere Fremde nach.
+- **Ein Häufchen, von dem nur ausgenommene Funde übrig sind, wird nicht
+  gelöscht**, sondern auf Größe 0 gesetzt. Sonst verschwände die Rücknahme.
+- **Die Kontaktbögen zeigen sie nicht.**
+
+**`--neu-gruppieren` meldet jetzt, was es kostet.** `gruppe.zustand =
+'unwichtig'` hängt am Häufchen, und das Häufchen wird dabei gelöscht – wer die
+Nachbarin einmal weggelegt hat, bekäme sie danach wieder als offene Frage
+vorgelegt. Der Lauf zählt diese Häufchen und sagt es. Die Namen selbst sind
+nicht in Gefahr: sie stehen an `gesicht.person_id` und überleben jedes
+Neugruppieren.

@@ -46,6 +46,13 @@ export interface Filter {
   ort: string;
   /** Eine Gitterzelle der Karte, aus `zelle=<stufe>:<zeile>:<spalte>`. */
   zelle: Zelle | null;
+  /**
+   * Kennung einer benannten Person, aus `person=<id>`. `null` heisst: egal.
+   *
+   * Gemeint ist "auf dieser Aufnahme kommt X vor" – ein Bild zeigt mehrere
+   * Personen, das ist kein Sonderfall.
+   */
+  person: number | null;
   seite: number;
 }
 
@@ -55,7 +62,7 @@ export interface Filter {
  */
 export const VORGABE: Filter = {
   jahr: [], monat: null, herkunft: "iphone", typ: "alle", ort: "alle",
-  zelle: null, seite: 1,
+  zelle: null, person: null, seite: 1,
 };
 
 type Suchwerte = Record<string, string | string[] | undefined>;
@@ -102,6 +109,7 @@ export function filterAusSuche(suche: Suchwerte): Filter {
     typ: (TYPEN as readonly string[]).includes(typ ?? "") ? (typ as string) : "alle",
     ort: ort === "mit" || ort === "ohne" ? ort : "alle",
     zelle: zelleAusText(eins(suche.zelle)),
+    person: zahl(eins(suche.person), 1, 2 ** 31 - 1),
     seite: zahl(eins(suche.seite), 1, 100000) ?? 1,
   };
 }
@@ -125,6 +133,7 @@ export function suchtext(
   if (f.typ !== "alle") teile.push(`typ=${f.typ}`);
   if (f.ort !== "alle") teile.push(`ort=${f.ort}`);
   if (f.zelle !== null) teile.push(`zelle=${zelleText(f.zelle)}`);
+  if (f.person !== null) teile.push(`person=${f.person}`);
   if (f.seite > 1) teile.push(`seite=${f.seite}`);
   teile.push(...zusatz);
   return teile.length ? `?${teile.join("&")}` : "";
@@ -165,7 +174,8 @@ export function istEingeschraenkt(filter: Filter): boolean {
     filter.herkunft !== "alle" ||
     filter.typ !== "alle" ||
     filter.ort !== "alle" ||
-    filter.zelle !== null
+    filter.zelle !== null ||
+    filter.person !== null
   );
 }
 
@@ -220,6 +230,34 @@ export function bedingung(filter: Filter, sicht: Sicht, ausser?: keyof Filter): 
     const z = zellbedingung(filter.zelle, werte.length + 1);
     werte.push(...z.werte);
     teile.push(z.text);
+  }
+
+  /*
+    DER PERSONENFILTER HAENGT AN `sicht.gesichter`, NICHT AN DER AUFRUFSTELLE.
+
+    Ohne diese Bedingung waere `?person=3` eine Auskunft darueber, wer auf
+    welchem Bild zu sehen ist – an jemanden, der das Recht `gesichter` nicht
+    hat. Dass die Filterleiste die Zeile dann nicht anzeigt, ist keine
+    Pruefung; eine Adresse tippt man. Die Pruefung steht deshalb hier, wo die
+    Menge entsteht, und `Sicht` ist an jeder Aufrufstelle Pflicht.
+
+    Als EXISTS und nicht als JOIN: ein Bild zeigt mehrere Personen, ein JOIN
+    vervielfachte die Zeilen und damit jede Trefferzahl. Und "X und Y
+    zusammen" ist damit spaeter ein zweites EXISTS mit UND daneben – die
+    Erweiterung aus dem Auftrag bleibt moeglich, ohne die Abfrage umzubauen.
+
+    `g.ausgenommen_am IS NULL`: ein von Hand aus dem Haeufchen genommenes
+    Gesicht traegt keine Person mehr, aber der Vermerk bleibt – die Bedingung
+    steht hier trotzdem, damit ein spaeter einmal einzeln zugeordneter und
+    dann ausgenommener Fund nicht wieder auftaucht.
+  */
+  if (filter.person !== null && ausser !== "person" && sicht.gesichter) {
+    werte.push(filter.person);
+    teile.push(
+      `EXISTS (SELECT 1 FROM gesicht g
+                WHERE g.bild_id = bild.id AND g.person_id = $${werte.length}
+                  AND g.ausgenommen_am IS NULL)`,
+    );
   }
   return { text: teile.join(" AND "), werte };
 }

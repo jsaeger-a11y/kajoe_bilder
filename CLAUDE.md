@@ -114,8 +114,8 @@ falsch geworden ist.
 | 7 | Aufräumen und Systempflege automatisieren | **fertig** (Neustart steht aus) |
 | 8 | Mehrjahresfilter, von der Karte in die Galerie | **fertig** |
 | – | Nachträge: Plattenumzug, Bildschirmfotos als Herkunft | **fertig** |
-| 9a | Gesichter finden und gruppieren, ohne Oberfläche | **Pilot** |
-| 9b | Benennen und Suchen nach Personen | offen |
+| 9a | Gesichter finden und gruppieren, ohne Oberfläche | **fertig** |
+| 9b | Benennen und Suchen nach Personen | **fertig** |
 | 10 | Cloudflare Tunnel | offen |
 
 Die Nummern folgen den Auftragsdateien in `docs/`. Gegenüber der ursprünglichen
@@ -219,6 +219,14 @@ deterministisch.
 > steht in getrennten Spalten (`gesicht.gruppe_id` gegen `gesicht.person_id`) und
 > wird nie ineinander überschrieben – sonst ist später nicht mehr nachvollziehbar,
 > wie verlässlich die Zuordnungen sind.
+>
+> **Was das im Betrieb kostet, und warum es trotzdem so bleibt:** Weil kein Lauf
+> `person_id` schreibt, hängen nach jedem Lauf an einem benannten Häufchen neue
+> Funde ohne Namen. Sie fehlten sonst in der Galerie unter dieser Person. In der
+> Oberfläche stehen sie deshalb als „N neu" mit einem Knopf, der sie übernimmt –
+> ein Klick, aber ein menschlicher. Genau dabei fällt auf, wenn die Maschine einen
+> Fremden in „Oma" gelegt hat. Der erste Nachlauf nach dem Benennen hat sieben
+> solcher Funde gebracht; der Fall ist real, nicht theoretisch.
 >
 > **Modell und Lizenz:** InsightFace `buffalo_l` (RetinaFace-Detektor `det_10g`,
 > ArcFace-Vektor `w600k_r50`) über `onnxruntime`, lokal auf dem Prozessor. Kein Bild
@@ -464,6 +472,15 @@ Eine Sicherheitsregel, die man einsetzen kann, kann man auch vergessen. Bedingun
 
 **Benutzer werden abgeschaltet, nicht gelöscht** (`aktiv`), sonst verwaisen ihre
 Listen.
+
+**Ansehen ist ein Recht, Benennen ist es nicht.** Seit Phase 9b gibt es das Recht
+`gesichter` – Vorgabe aus, nach dem Muster von `karte`. Damit lässt sich jemandem ein
+Jahrgang für den Kalender freigeben, ohne ihm zugleich die Personensuche zu geben:
+„zeig mir alle Aufnahmen von X über elf Jahrgänge" ist etwas anderes als Bilder
+ansehen. **Namen vergeben darf nur ein Verwalter**, und dafür steht bewusst *keine*
+Kennung in `RECHTE` – ein Recht, das in der Liste steht, ließe sich einzeln verteilen.
+Wer benennt, legt fest, wer im Archiv namentlich auffindbar ist, und das berührt Rechte
+Dritter.
 
 **Dazu die Jahresfreischaltung** (`benutzer.jahre`, Migration 006) – eine dritte,
 von Rolle und Rechten unabhängige Achse. Anlass: für den Kalender bekommt jemand von

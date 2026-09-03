@@ -32,10 +32,21 @@ const VORGEMERKT = "geloescht_am IS NOT NULL";
 /** Was diese Person sehen darf. `jahre === null` heisst: alles. */
 export interface Sicht {
   jahre: number[] | null;
+  /**
+   * Darf diese Person erkannte Personen sehen? Aus dem Recht `gesichter`.
+   *
+   * Das steht hier und nicht als Pruefung an der Aufrufstelle, weil der
+   * Personenfilter der Galerie sonst vergessen werden koennte – und ein
+   * `person=3` in der Adresse waere dann eine Auskunft darueber, wer auf
+   * welchem Bild ist, an jemanden, der sie nicht haben soll. Genau dieselbe
+   * Ueberlegung wie bei den Jahrgaengen: eine Bedingung, die ueberall gelten
+   * muss, gehoert in die `Sicht` und nicht in die Erinnerung des Aufrufers.
+   */
+  gesichter: boolean;
 }
 
 /** Sieht alles – fuer Aufrufe ausserhalb einer Anmeldung (Werkzeuge, Ingest). */
-export const ALLES: Sicht = { jahre: null };
+export const ALLES: Sicht = { jahre: null, gesichter: true };
 
 /**
  * Die Sicht einer angemeldeten Person.
@@ -44,8 +55,14 @@ export const ALLES: Sicht = { jahre: null };
  * Feld steht. Diese Ausnahme steht hier vorn und nicht als Sonderfall an
  * fuenfzehn Aufrufstellen.
  */
-export function sichtVon(wer: { rolle: string; jahre: number[] | null }): Sicht {
-  return { jahre: wer.rolle === "verwalter" ? null : wer.jahre };
+export function sichtVon(
+  wer: { rolle: string; jahre: number[] | null; rechte: string[] },
+): Sicht {
+  const verwalter = wer.rolle === "verwalter";
+  return {
+    jahre: verwalter ? null : wer.jahre,
+    gesichter: verwalter || wer.rechte.includes("gesichter"),
+  };
 }
 
 /** Ist ueberhaupt etwas eingeschraenkt? Nur fuer Texte in der Anzeige. */

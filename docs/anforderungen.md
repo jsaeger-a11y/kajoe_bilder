@@ -143,6 +143,31 @@ Ruhe. Ein Neugruppieren aller Funde ist ein eigener, ausdrücklicher Schalter.
 unter `/data/kajoe_bilder/probe/gruppen/`. Benennen und Suchen kommen in 9b –
 erst, wenn die Bögen überzeugen.
 
+### B8 – Personen: ansehen ist ein Recht, benennen ist es nicht
+
+Phase 9b gibt den Häufchen Namen. Zwei Stufen, mit Absicht getrennt:
+`gesichter` ist ein **Recht** wie `karte` (Vorgabe aus) und erlaubt, Personen zu
+sehen und nach ihnen zu suchen. **Benennen darf nur ein Verwalter** – dafür gibt
+es kein eigenes Recht, weil ein Recht sich einzeln verteilen ließe. Wer Namen
+vergibt, legt fest, wer im Archiv namentlich auffindbar ist.
+
+**Eine Stelle sagt, wer auf einem Bild ist:** `gesicht.person_id`. Es gibt keine
+Spalte `gruppe.person_id`; wem ein Häufchen gehört, ergibt sich aus seinen Funden.
+Das hält die Wahrheit an einem Ort und erlaubt zugleich, die Häufchen der Maschine
+jederzeit neu zu bilden, ohne eine menschliche Zuordnung zu verlieren.
+
+**Drei Wege aus einem offenen Häufchen:** einer bestehenden Person zuordnen (das
+ist zugleich das Zusammenführen – zwei Häufchen, eine Person), eine neue Person
+anlegen (freier Text, keine Prüfung auf „echte" Namen: das drittgrößte Häufchen
+des Piloten ist der Hund), oder als unwichtig ablegen. **Ablegen ist eine
+Entscheidung, kein Löschen:** das Häufchen bleibt vollständig, nimmt weiter neue
+Gesichter auf und stellt keine Frage mehr.
+
+**Ein einzelnes fremdes Gesicht lässt sich herausnehmen**, mit einem eigenen
+Vermerk am Fund – nicht durch Zurücksetzen der Gruppenkennung. Sonst legte der
+nächste Lauf dasselbe Gesicht wieder dazu, und dieselbe Korrektur wäre nach jedem
+Lauf erneut fällig.
+
 ### B4 – Originale und Ableitungen
 
 **Eine verlustfreie Umwandlung von HEIC gibt es nicht.** HEIC ist HEVC-basiert und
@@ -259,8 +284,8 @@ zweistufig, mit 30 Tagen Frist. Bilder in einer Auswahlliste bleiben verschont.
 | 7 | Aufräumen und Systempflege automatisieren | fertig (Neustart steht aus) |
 | 8 | Mehrjahresfilter, von der Karte in die Galerie | fertig |
 | – | Nachträge: Plattenumzug, Bildschirmfotos als Herkunft | fertig |
-| 9a | Gesichter finden und gruppieren, ohne Oberfläche | Pilot |
-| 9b | Benennen und Suchen nach Personen | offen |
+| 9a | Gesichter finden und gruppieren, ohne Oberfläche | fertig |
+| 9b | Benennen und Suchen nach Personen | fertig |
 | 10 | Cloudflare Tunnel | offen |
 
 ---

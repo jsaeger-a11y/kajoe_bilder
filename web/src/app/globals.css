@@ -413,3 +413,92 @@ main.weit { max-width: 78rem; }
 .blasenknoepfe a.haupt {
   background: var(--betont); border-color: var(--betont); color: var(--grund);
 }
+
+/* ---------------------------------------------------------------------------
+   Personen und Häufchen (Phase 9b)
+
+   Benennen ist Handarbeit, und die macht man abends auf dem Sofa – also am
+   Telefon. Deshalb: Gesichter gross genug zum Erkennen, Knöpfe gross genug
+   zum Treffen, und keine Zeile, die waagerecht aus dem Bild läuft.
+--------------------------------------------------------------------------- */
+
+.gesicht-kachel {
+  display: block; line-height: 0;
+  border-radius: 6px; overflow: hidden; background: var(--rand);
+  width: 100%; aspect-ratio: 1;
+}
+.gesicht-kachel img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gesicht-kachel:focus-visible { outline: 3px solid var(--betont); outline-offset: 2px; }
+.gesicht-leer { width: 100%; aspect-ratio: 1; background: var(--rand); border-radius: 6px; }
+
+/* Die Beispielgesichter einer Person: eine Reihe, die bei Bedarf umbricht. */
+.gesichtszeile {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: .4rem;
+  margin: .5rem 0;
+}
+
+.personenliste { display: grid; gap: 1rem; margin: 1rem 0; }
+.personenkarte { margin: 0; }
+.personenkopf h2 { margin: 0 0 .15rem; font-size: 1.05rem; }
+
+/* Die Häufchenliste. Kachel und Knopf gehören zusammen und bleiben zusammen. */
+.haeufchenliste {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: .75rem;
+  margin: 1rem 0;
+}
+.haeufchen-eintrag { display: flex; flex-direction: column; gap: .35rem; }
+.haeufchen-eintrag .haeufchen-kachel { flex: 1; }
+.haeufchen-kachel {
+  display: block; text-decoration: none; color: inherit;
+  border: 1px solid var(--rand); border-radius: 8px; overflow: hidden;
+  background: var(--feld);
+}
+.haeufchen-kachel img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.haeufchen-kachel:hover { border-color: var(--betont); }
+.haeufchen-kachel:focus-visible { outline: 3px solid var(--betont); outline-offset: 2px; }
+.haeufchen-text { padding: .4rem .5rem .5rem; font-size: .82rem; line-height: 1.35; }
+.haeufchen-text strong { display: block; overflow-wrap: anywhere; }
+
+/* Die Funde eines Häufchens – kleiner als die Kacheln, es sind viele. */
+.fundraster {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: .5rem;
+  margin: 1rem 0;
+}
+.fund {
+  display: flex; flex-direction: column; align-items: stretch; gap: .15rem;
+  font-size: .75rem; font-variant-numeric: tabular-nums;
+}
+.fund form { margin: 0; }
+/* Ein herausgenommener Fund bleibt sichtbar, aber deutlich abgesetzt: er zählt
+   nirgends mehr mit, und das soll man sehen, ohne den Text zu lesen. */
+.fund-aus .gesicht-kachel { opacity: .45; outline: 2px dashed var(--warnung); outline-offset: -2px; }
+.fund-person { color: var(--betont); overflow-wrap: anywhere; }
+
+/* Auswahlliste und Knopf nebeneinander – auf dem Telefon untereinander, sonst
+   wird der native Auswähler unbedienbar schmal. */
+.karte select {
+  flex: 1 1 12rem; min-width: 0;
+  padding: .5rem; min-height: 2.75rem;
+  border: 1px solid var(--rand); border-radius: 6px;
+  background: var(--feld); color: var(--schrift); font: inherit;
+}
+
+@media (max-width: 34rem) {
+  .haeufchenliste { grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+  .fundraster { grid-template-columns: repeat(3, 1fr); gap: .4rem; }
+  .gesichtszeile { grid-template-columns: repeat(4, 1fr); }
+}
+
+/*
+  Auf Fingerbedienung müssen die kleinen Knöpfe ("heraus", "zurück") trotzdem
+  zu treffen sein. 44 Punkte sind das Mass, unter dem es zum Glücksspiel wird.
+*/
+@media (pointer: coarse) {
+  .fund button.klein, .haeufchen-eintrag button.klein { min-height: 2.75rem; width: 100%; }
+}

@@ -11,6 +11,7 @@ import { eigeneListen } from "@/lib/listen";
 import {
   auswahlAusSuche, auswahlteile, istMarkiert, umschalten,
 } from "@/lib/markierung";
+import { personen } from "@/lib/personen";
 import { HOECHSTENS_JE_VORGANG } from "@/lib/rechte";
 import { sichtVon, sichtbar } from "@/lib/sichtbar";
 import { zellmitte } from "@/lib/zelle";
@@ -44,11 +45,14 @@ export default async function Galerie({
   const filter = filterAusSuche(suche);
   const auswahl = auswahlAusSuche(suche);
 
-  const [{ kacheln, treffer }, zahlen, raeume, listen] = await Promise.all([
+  const [{ kacheln, treffer }, zahlen, raeume, listen, benannte] = await Promise.all([
     seite(filter, sicht),
     trefferzahlen(filter, sicht),
     zeitraeume(filter, sicht),
     eigeneListen(wer.benutzerId, sicht),
+    // Nur mit dem Recht `gesichter` – sonst gibt es die Zeile gar nicht, und
+    // die Abfrage laeuft auch nicht.
+    sicht.gesichter ? personen(sicht) : Promise.resolve([]),
   ]);
 
   const seiten = Math.max(1, Math.ceil(treffer / SEITENGROESSE));
@@ -85,7 +89,8 @@ export default async function Galerie({
       <Kopf wer={wer} />
       <h1>Galerie</h1>
 
-      <Filterleiste filter={filter} zahlen={zahlen} treffer={treffer} zeitraeume={raeume} />
+      <Filterleiste filter={filter} zahlen={zahlen} treffer={treffer} zeitraeume={raeume}
+                    personen={benannte.map((p) => ({ id: p.id, name: p.name, aufnahmen: p.aufnahmen }))} />
 
       {/*
         Dass ein Kartenausschnitt filtert, muss dastehen. Sonst sucht jemand

@@ -36,6 +36,7 @@ function Marke({
  */
 export default function Filterleiste({
   filter, zahlen, treffer, zeitraeume, pfad = "/galerie", ortszeile = true, was = "Aufnahmen",
+  personen = [],
 }: {
   filter: Filter;
   zahlen: Zahlen;
@@ -44,6 +45,15 @@ export default function Filterleiste({
   pfad?: string;
   ortszeile?: boolean;
   was?: string;
+  /**
+   * Die benannten Personen – leer, wenn das Recht `gesichter` fehlt oder noch
+   * niemand benannt ist. Die Zeile entfaellt dann ganz.
+   *
+   * Dass sie fehlt, ist KEINE Pruefung: ein `?person=3` in der Adresse wird in
+   * `bedingung()` an `sicht.gesichter` geprueft und sonst schlicht nicht
+   * angewandt.
+   */
+  personen?: { id: number; name: string; aufnahmen: number }[];
 }) {
   const verweis = (aenderung: Partial<Filter>) => filterlink(pfad, filter, aenderung);
   const jahre = [...new Set(zeitraeume.map((z) => z.jahr))].sort((a, b) => b - a);
@@ -143,6 +153,18 @@ export default function Filterleiste({
         <Marke ziel={verweis({ typ: "video" })} text="Videos"
                anzahl={zahlen.jeTyp.video ?? 0} gewaehlt={filter.typ === "video"} />
       </div>
+
+      {personen.length ? (
+        <div className="filterzeile">
+          <b>Person</b>
+          <Marke ziel={verweis({ person: null })} text="alle"
+                 gewaehlt={filter.person === null} />
+          {personen.map((p) => (
+            <Marke key={p.id} ziel={verweis({ person: p.id })} text={p.name}
+                   anzahl={p.aufnahmen} gewaehlt={filter.person === p.id} />
+          ))}
+        </div>
+      ) : null}
 
       {ortszeile ? (
         <div className="filterzeile">
