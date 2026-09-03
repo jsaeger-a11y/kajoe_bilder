@@ -283,4 +283,125 @@ if systemctl --user list-unit-files kajoe-sicherung.timer >/dev/null 2>&1; then
 else
     echo "  Timer        nicht eingerichtet – siehe systemd/LIESMICH.md"
 fi
+
+# ---------------------------------------------------------------------------
+titel "Repository"
+
+# KEIN `git fetch`. Dieser Ueberblick soll jederzeit durchlaufen – auch ohne
+# Netz, ohne SSH-Schluessel und ohne jemanden, der eine Passphrase eintippt;
+# bei einer Passphrase bliebe er sonst einfach stehen. Gelesen wird allein der
+# lokale Stand, und der weiss genau das, worauf es hier ankommt: was noch
+# nicht gepusht ist. Der Preis steht in der Ausgabe und wird nicht verschwiegen
+# – "hinter" ist der Stand des letzten fetch, nicht der von jetzt. Ein
+# "gleichauf" heisst also: hier liegt nichts herum, nicht: die Gegenseite hat
+# sich nicht bewegt.
+#
+# Und die Zahlen kommen aus `git rev-list`, nicht aus einem Bericht, einer
+# Zaehlung von Hand oder dem Gedaechtnis von irgendwem. Genau daran ist hier
+# schon mehrfach falsch geraten worden.
+
+if ! command -v git >/dev/null 2>&1; then
+    echo "  git ist nicht installiert"
+elif ! git -C "$PROJEKT" rev-parse --git-dir >/dev/null 2>&1; then
+    echo "  $PROJEKT ist kein Git-Repository"
+else
+    ZWEIG=$(git -C "$PROJEKT" symbolic-ref --quiet --short HEAD)
+
+    # Das Gegenstueck ist der eingestellte Upstream; fehlt er (oder haengt der
+    # Kopf ab), wird ersatzweise origin/main genommen, falls es das gibt.
+    # Woher der Verweis stammt, wird mitgefuehrt und auch angezeigt: ein Pfeil
+    # "zweig -> origin/main" behauptet sonst einen Upstream, den niemand
+    # eingestellt hat, und beim naechsten `git push` ohne Argumente wundert
+    # sich jemand.
+    FERN=$(git -C "$PROJEKT" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)
+    FERN_QUELLE=upstream
+    if [ -z "$FERN" ]; then
+        FERN_QUELLE=keins
+        if git -C "$PROJEKT" rev-parse --verify --quiet origin/main >/dev/null; then
+            FERN=origin/main
+            FERN_QUELLE=ersatz
+        fi
+    fi
+
+    if [ -n "$ZWEIG" ]; then
+        case "$FERN_QUELLE" in
+            upstream) ZWEIGTEXT="$ZWEIG -> $FERN" ;;
+            ersatz)   ZWEIGTEXT="$ZWEIG – kein Upstream eingestellt, verglichen mit $FERN" ;;
+            *)        ZWEIGTEXT="$ZWEIG" ;;
+        esac
+        printf '  %-24s %s\n' "Zweig" "$ZWEIGTEXT"
+    else
+        printf '  %-24s %s\n' "Zweig" \
+            "abgeloest bei $(git -C "$PROJEKT" rev-parse --short HEAD) – kein Zweig ausgecheckt"
+        echo "  ACHTUNG: ein Commit hier haengt an keinem Zweig und geht beim naechsten"
+        echo "           Wechsel verloren – 'git switch -c <name>' oder 'git switch main'"
+    fi
+
+    if [ -z "$FERN" ]; then
+        echo "  kein Gegenstueck: weder ein eingestellter Upstream noch origin/main"
+    else
+        # rev-list --left-right --count A...B liefert "hinter<TAB>vor".
+        STAND=$(git -C "$PROJEKT" rev-list --left-right --count "$FERN"...HEAD 2>/dev/null)
+        HINTER=${STAND%%[[:space:]]*}
+        VOR=${STAND##*[[:space:]]}
+
+        if [ -z "$STAND" ]; then
+            printf '  %-24s %s\n' "Stand" "nicht bestimmbar – $FERN und HEAD haben keine gemeinsame Wurzel"
+        elif [ "$VOR" -eq 0 ] && [ "$HINTER" -eq 0 ]; then
+            printf '  %-24s %s\n' "Stand" "gleichauf mit $FERN (Stand des letzten fetch)"
+        elif [ "$HINTER" -eq 0 ]; then
+            printf '  %-24s %s\n' "Stand" "$VOR Commit(s) nicht gepusht"
+        elif [ "$VOR" -eq 0 ]; then
+            printf '  %-24s %s\n' "Stand" "$HINTER Commit(s) von $FERN fehlen hier"
+        else
+            printf '  %-24s %s\n' "Stand" \
+                "$VOR nicht gepusht, $HINTER fehlend – auseinandergelaufen"
+        fi
+
+        if [ -n "$STAND" ] && [ "$VOR" -gt 0 ]; then
+            # Alter des AELTESTEN nicht gepushten Commits. Einmal in eine
+            # Variable lesen statt `| head -1`: eine abgeschnittene Leitung
+            # laesst git mit 141 enden, und `pipefail` machte daraus einen
+            # Fehlschlag der ganzen Zeile.
+            ZEITEN=$(git -C "$PROJEKT" log --reverse --format=%ct "$FERN"..HEAD 2>/dev/null)
+            AELTESTE=${ZEITEN%%$'\n'*}
+            if [ -n "$AELTESTE" ]; then
+                LIEGT_S=$(( $(date +%s) - AELTESTE ))
+                if [ "$LIEGT_S" -ge 86400 ]; then
+                    LIEGT="$((LIEGT_S / 86400)) Tag(e)"
+                else
+                    LIEGT="$((LIEGT_S / 3600)) Stunde(n)"
+                fi
+                printf '  %-24s %s\n' "aeltester davon" "liegt seit $LIEGT hier"
+                # Erst ab einem Tag eine Warnung: unmittelbar nach einem Commit
+                # ist "nicht gepusht" der Normalzustand, und eine Warnung, die
+                # im Normalbetrieb erscheint, liest nach dem dritten Mal
+                # niemand mehr. Liegt der aelteste dagegen einen Tag hier, ist
+                # der Push vergessen worden – und die Arbeit gibt es dann nur
+                # auf dieser Maschine.
+                if [ "$LIEGT_S" -ge 86400 ]; then
+                    echo "  ACHTUNG: $VOR Commit(s) gibt es nur auf dieser Maschine, den aeltesten"
+                    echo "           seit $LIEGT – 'git push'"
+                fi
+            fi
+        fi
+
+        if [ -n "$STAND" ] && [ "$HINTER" -gt 0 ]; then
+            echo "  ACHTUNG: $FERN hatte beim letzten fetch $HINTER Commit(s), die hier fehlen"
+            echo "           – 'git pull' (dieser Ueberblick holt selbst nichts)"
+        fi
+    fi
+
+    # Ungespeicherte Aenderungen. Ueber eine Variable und `<<<` geprueft, aus
+    # demselben Grund wie oben.
+    AENDERUNGEN=$(git -C "$PROJEKT" status --porcelain 2>/dev/null)
+    if [ -z "$AENDERUNGEN" ]; then
+        printf '  %-24s %s\n' "Arbeitsstand" "sauber"
+    else
+        UNVERFOLGT=$(grep -c '^??' <<< "$AENDERUNGEN")
+        GEAENDERT=$(grep -vc '^??' <<< "$AENDERUNGEN")
+        printf '  %-24s %s\n' "Arbeitsstand" \
+            "$GEAENDERT geaendert, $UNVERFOLGT unverfolgt – nicht gespeichert"
+    fi
+fi
 echo

@@ -670,5 +670,15 @@ Täglicher `pg_dump` ab Phase 0, nicht später.
   `undefined`. Mit `isolatedModules` – das Next voraussetzt – bricht `tsc` immerhin ab,
   sonst liefe es still ins Leere. Stattdessen den Zahlenwert schreiben, mit der
   Begründung daneben (so in `web/src/lib/passwort.ts` bei argon2id).
+- **Ein Überblick, der das Netz braucht, ist im entscheidenden Moment nicht da.** Der
+  Abschnitt „Repository" in `tools/status.sh` holt deshalb bewusst nichts – **kein
+  `git fetch`**. Sonst hinge `tools/status.sh` an Internetverbindung, SSH-Schlüssel und
+  Passphrase, und bei einer Passphrase bliebe es einfach stehen. Der lokale Stand
+  beantwortet die Frage, auf die es ankommt: Was gibt es nur auf dieser Maschine? Der
+  Preis dafür steht in der Ausgabe („Stand des letzten fetch") und gehört dorthin: ein
+  „gleichauf" heißt, dass hier nichts herumliegt, nicht, dass die Gegenseite sich nicht
+  bewegt hat. Und die Zahlen kommen aus `git rev-list`, nie aus einer Zählung von Hand –
+  die lag mehrfach daneben, zuletzt am 03.09.2026 mit der Behauptung, `main` sei nie
+  gepusht worden, während `origin/main` längst auf demselben Commit stand.
 
 Ein Prüfwerkzeug hat genau eine richtige Aufrufart. tools/nachneustart.sh prüfte unter sudo die Benutzerangaben von root und meldete acht Fehler, die keine waren – während es ohne sudo einen Wert schuldig blieb und ausgerechnet den falschen Aufruf empfahl. Wer dreimal „8 Fehler" bei lauter Häkchen liest, sieht beim vierten Mal nicht mehr hin, und dann fällt der echte neunte durch. Werkzeuge, die erhöhte Rechte für einen Einzelwert brauchen, holen sich diesen selbst, statt insgesamt als root zu laufen.
