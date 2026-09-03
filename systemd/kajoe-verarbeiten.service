@@ -1,10 +1,10 @@
-# Einlesen und Ableiten, angestossen ueber die Auslesedatei.
+# Einlesen, Ableiten und Gesichter, angestossen ueber die Auslesedatei.
 #
 # Der Lauf gehoert systemd und nicht der Weboberflaeche: ein Kindprozess aus
 # Node haengt am Webdienst und stirbt bei dessen Neustart mit.
 
 [Unit]
-Description=kajoe_bilder – einlesen und ableiten
+Description=kajoe_bilder – einlesen, ableiten, Gesichter
 Documentation=file:///home/jsaeger/webspace/kajoe_bilder/ingest/LIESMICH.md
 After=docker.service
 Wants=docker.service
@@ -30,7 +30,9 @@ Environment=TZ=UTC
 
 ExecStart=/home/jsaeger/webspace/kajoe_bilder/tools/verarbeiten.sh
 
-# Ein Lauf ueber siebzehntausend Dateien dauert Stunden. Kein Zeitlimit.
+# Ein Lauf ueber den ganzen Bestand dauert Stunden – seit Phase 10 mit dem
+# dritten Schritt noch laenger (gemessen 2 h 50 min allein fuer die
+# Gesichter ueber 32.410 Bilder). Kein Zeitlimit.
 TimeoutStartSec=infinity
 
 # Nicht neu starten: ein gescheiterter Lauf soll gescheitert bleiben und im

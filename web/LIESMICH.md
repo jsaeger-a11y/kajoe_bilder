@@ -1261,3 +1261,93 @@ Viewport steht auf `width=device-width`, die Anwendung ist über
 Knöpfe bekommen bei Fingerbedienung 2,75 rem Höhe und volle Breite, und die
 Personenauswahl ist eine echte `<select>`-Liste, also der native Auswähler.
 **Ob das reicht, muss jemand am Gerät sagen.**
+
+---
+
+# Die Kette schließt sich (Phase 10)
+
+Die Seite `/verarbeiten` stößt seit Phase 10 **drei** Schritte an: einlesen,
+ableiten, Gesichter. An der Oberfläche änderte sich dafür dreierlei.
+
+## Eine Dauerschätzung, bevor der Knopf gedrückt wird
+
+Nicht als Versprechen, sondern damit niemand einen Knopf drückt, der zwei
+Minuten dauern soll und drei Stunden läuft. Die Werte stehen an **einer**
+Stelle (`DAUER_JE_DATEI_MS` und `VORLAUF_SEKUNDEN` in `lib/verarbeitung.ts`)
+und sind an diesem Bestand gemessen, nicht geschätzt:
+
+| Posten | Wert | woraus |
+|---|---|---|
+| einlesen | 27 ms je Datei | 36.714 Dateien in 16 min 26 s |
+| ableiten | 254 ms je Datei | 30.696 Dateien in 2 h 10 min (Bilder und Videos gemischt) |
+| Gesichter | 314 ms je **Bild** | 32.410 Bilder in 2 h 50 min |
+| fester Vorlauf | 20 s | Modell laden, Gruppieren über den ganzen Fundbestand, drei Prozessstarts |
+
+Der Auftrag nannte 15 ms fürs Einlesen; gemessen sind es 27. Der größte
+Einlesevorgang dieses Bestands – 36.714 Dateien – ist die belastbarere Zahl,
+deshalb steht sie hier.
+
+**Der feste Vorlauf war die eigentliche Überraschung.** Ohne ihn sagte die
+Schätzung für 20 Dateien 12 s und es wurden 24. Er fällt an, ob zwanzig Dateien
+dazukommen oder zwanzigtausend, und er wächst mit dem **Archiv**, nicht mit dem
+Schwung: das Gruppieren läuft jedes Mal über alle 30.000 Funde.
+
+Nur Bilder bekommen einen Gesichtsdurchlauf, Videos nicht. Welche Endung als
+Video gilt, steht dafür in `VIDEOENDUNGEN` – **nur für die Schätzung**. Die
+maßgebliche Liste ist `VIDEOTYPEN` in `ingest/einordnen.py`; laufen die beiden
+auseinander, wird eine Zahl etwas schiefer, mehr nicht.
+
+## Der Bericht kennt jetzt drei Schritte
+
+Für `gesichter` nennt er, was sonst nur im Protokoll stünde: Bilder untersucht,
+Funde, davon tauglich, neue Häufchen, an bestehende angehängt. Die Zahlen
+kommen aus `gesichtslauf`, verknüpft über `verarbeitung.gesichtslauf_id`
+(Migration 012) – dieselbe Bauart wie `ingest_lauf_id` beim Einlesen.
+
+## Der Hinweis, den sonst niemand bemerkt
+
+Der Gesichtsschritt ordnet mit Absicht nichts zu. Nach einem Lauf hängen
+deshalb neue Funde ohne Namen an benannten Häufchen. **Ohne einen sichtbaren
+Hinweis passiert genau das:** der Knopf ist gedrückt, der Lauf ist durch, und
+die neuen Gesichter an „Oma" warten still – und fehlen in der Galerie unter
+ihrem Namen.
+
+Also steht der Kasten „Es warten N Funde auf ein Ja" oben auf `/verarbeiten`,
+mit dem Weg nach `/haeufchen/benannt`. Die Zahl kommt aus derselben Funktion
+wie die Unterleiste der Personenseiten (`zahlen()` in `lib/personen.ts`) – eine
+zweite Rechnung daneben liefe früher oder später auseinander.
+
+## Was geprüft wurde
+
+Alles an der laufenden Anlage, mit echten Dateien; der Knopf wurde über
+denselben RSC-Weg gedrückt, den der Browser nimmt.
+
+| Prüfung | Ergebnis |
+|---|---|
+| **20 neue Dateien, Knopf drücken** | alle drei Schritte gelaufen, `eingang/` danach leer, Bericht mit Zahlen für jeden Schritt: einlesen 20/20, ableiten „erzeugt 20, übersprungen 40.915, fehlgeschlagen 18", Gesichter „20 Bilder, 41 Funde" |
+| **Browser zu, später nachsehen** | der Lauf gehört systemd; die Seite zeigte nach dem Wiederkommen den richtigen Stand |
+| **Webdienst mitten im Gesichtsschritt neu gestartet** | Lauf lief weiter (Prozess 1108121 lebte, Dienst blieb `activating`) |
+| **Zweiter Anstoß während des Laufs** | abgewiesen: „Es läuft bereits ein Vorgang. Der zweite Anstoß wurde nicht angenommen." |
+| **`tools/ableiten.sh` von Hand während des Laufs** | „FEHLER: es laeuft bereits ein Vorgang (Nr. 45, gesichter)", Rückgabewert 2 |
+| **Bild mit vorhandenen Funden** | zweiter Kettenlauf: „0 Bild(er) zu bearbeiten" |
+| **Neuer Fund an benanntem Häufchen** | 41 neue Funde landeten in benannten Häufchen, **keiner** wurde zugeordnet; Protokoll und Seite meldeten „N Funde warten auf Übernahme" |
+| **Fehler im zweiten Schritt (herbeigeführt)** | „Schritt 2: ableiten GESCHEITERT (Rueckgabewert 2) – die folgenden Schritte laufen NICHT an", Schritt 3 lief nicht |
+| **`tools/gesichter.sh` von Hand** | unverändert; `--nur-bericht` liefert den Bericht |
+
+**Schätzung gegen Wirklichkeit**, zweimal gemessen:
+
+| Schwung | geschätzt | gemessen |
+|---|---|---|
+| 20 Dateien (vor dem Vorlaufposten) | 12 s | 24 s |
+| 40 Dateien (mit Vorlaufposten) | 44 s | 47 s |
+
+Der erste Wert war der Anlass für den festen Vorlauf; danach lag die Schätzung
+7 % daneben. Für große Schwünge zählt ohnehin der Anteil je Datei, und der
+stammt aus Läufen über 30.000 Dateien.
+
+Nach der Prüfung wurden alle 60 Prüfdateien wieder entfernt: Bestand und
+Fundzahl stehen exakt auf den Werten von vorher. **Was blieb:** 227 bereits
+vorhandene Funde, die die Läufe an benannte Häufchen angehängt haben und die
+nun auf eine Bestätigung warten. Das ist kein Rückstand aus der Prüfung,
+sondern das, was jeder Lauf tut – die Mittelvektoren rücken nach, und Funde,
+die vorher knapp unter der Schwelle lagen, kommen darüber.

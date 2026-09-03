@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tools/verarbeiten.sh – einlesen, dann ableiten.
+# tools/verarbeiten.sh – einlesen, ableiten, Gesichter.
 #
 # Wird von kajoe-verarbeiten.service aufgerufen, sobald die Auslesedatei
 # /data/kajoe_bilder/.anstoss auftaucht (kajoe-verarbeiten.path). Laesst sich
@@ -44,16 +44,50 @@ ARG=()
 
 meldung "Verarbeitung beginnt${BENUTZER:+ (angestossen von Benutzer $BENUTZER)}"
 
-meldung "--- Schritt 1: einlesen ---"
-if ! "$PROJEKT/tools/einlesen.sh" "${ARG[@]}"; then
-    meldung "Einlesen gescheitert – das Ableiten laeuft NICHT an."
-    exit 1
-fi
+# Ein gescheiterter SCHRITT haelt die Kette an. Einzelne gescheiterte DATEIEN
+# tun das nicht – dafuer gibt es den Rueckgabewert 3.
+#
+# Der Unterschied musste sein: im Bestand liegen 18 abgeschnittene JPEGs aus
+# 2020, die sich nicht ableiten lassen und es nie werden. Ohne diese
+# Unterscheidung waere jeder Lauf gescheitert, die Gesichtserkennung liefe nie
+# wieder an, und der Dienst stuende dauerhaft auf `failed` – genau der Zustand,
+# den CLAUDE.md als "macht die Zustandsanzeige wertlos" beschreibt. Sichtbar
+# bleiben die Fehlschlaege trotzdem: namentlich in der Datenbank und im
+# Bericht.
+EINZELFEHLER=0
+schritt() {   # name, Befehl …
+    local name="$1"; shift
+    meldung "--- $name ---"
+    "$@"
+    local code=$?
+    case $code in
+        0) return 0 ;;
+        3) EINZELFEHLER=1
+           meldung "$name: durchgelaufen, aber einzelne Dateien sind gescheitert."
+           return 0 ;;
+        *) meldung "$name GESCHEITERT (Rueckgabewert $code) – die folgenden Schritte laufen NICHT an."
+           return 1 ;;
+    esac
+}
 
-meldung "--- Schritt 2: ableiten ---"
-if ! "$PROJEKT/tools/ableiten.sh" "${ARG[@]}"; then
-    meldung "Ableiten gescheitert."
-    exit 1
-fi
+schritt "Schritt 1: einlesen"  "$PROJEKT/tools/einlesen.sh"  "${ARG[@]}" || exit 1
+schritt "Schritt 2: ableiten"  "$PROJEKT/tools/ableiten.sh"  "${ARG[@]}" || exit 1
 
-meldung "Verarbeitung fertig."
+# Schritt 3 haengt an Schritt 2, und zwar zwingend: gerechnet wird auf der
+# Ansichtsfassung. Waere das Ableiten gescheitert, faende dieser Schritt
+# entweder nichts oder arbeitete auf einem halben Bestand – und ein zweiter
+# Lauf holte das Fehlende spaeter nach, ohne dass jemand wuesste, warum es
+# fehlte.
+#
+# Der Schritt ORDNET NICHTS ZU. Neue Funde landen im Gruppierungsschritt; wo
+# sie an ein benanntes Haeufchen passen, warten sie dort auf einen Menschen
+# (Phase 9b). Und er gruppiert nicht neu: --neu-gruppieren bleibt ein Aufruf
+# von Hand, weil er alle Ablage-Entscheidungen verwirft.
+schritt "Schritt 3: Gesichter" "$PROJEKT/tools/gesichter.sh" "${ARG[@]}" || exit 1
+
+if [ "$EINZELFEHLER" = 1 ]; then
+    meldung "Verarbeitung fertig – mit Einzelfehlern. Welche Dateien es waren, steht"
+    meldung "in der Oberflaeche unter Verarbeiten und oben in diesem Protokoll."
+else
+    meldung "Verarbeitung fertig."
+fi

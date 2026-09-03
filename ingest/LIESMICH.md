@@ -805,3 +805,75 @@ Nachbarin einmal weggelegt hat, bekäme sie danach wieder als offene Frage
 vorgelegt. Der Lauf zählt diese Häufchen und sagt es. Die Namen selbst sind
 nicht in Gefahr: sie stehen an `gesicht.person_id` und überleben jedes
 Neugruppieren.
+
+---
+
+# Die Kette schließt sich: drei Schritte (Phase 10)
+
+`tools/verarbeiten.sh` macht seit Phase 10 **drei** Dinge nacheinander:
+
+    Schritt 1: einlesen    tools/einlesen.sh   → ingest/lauf.py
+    Schritt 2: ableiten    tools/ableiten.sh   → ingest/ableiten.py
+    Schritt 3: Gesichter   tools/gesichter.sh  → ingest/gesichter.py
+
+Angestoßen wird weiterhin über die Auslösedatei `/data/kajoe_bilder/.anstoss`
+und `kajoe-verarbeiten.path`. **Alle drei bleiben einzeln von Hand aufrufbar**
+– wenn die Weboberfläche nicht läuft, hängt die Verarbeitung nicht davon ab.
+
+## Ein gescheiterter Schritt hält die Kette an, eine gescheiterte Datei nicht
+
+| Rückgabewert | Bedeutung | Kette |
+|---|---|---|
+| `0` | sauber durchgelaufen | weiter |
+| `2` | es läuft bereits ein Vorgang | Abbruch |
+| `3` | durchgelaufen, **einzelne Dateien** gescheitert | weiter, mit Meldung |
+| alles andere | der **Schritt** ist gescheitert | Abbruch |
+
+Vorher gab `ableiten.py` bei jedem einzelnen Fehlschlag `1` zurück. Mit dem
+dritten Schritt daran wurde daraus sofort ein Dauerschaden: im Bestand liegen
+**18 abgeschnittene JPEGs von Oktober bis Dezember 2020**, die sich nicht
+ableiten lassen und es nie werden. Der erste Kettenlauf endete deshalb mit
+„Ableiten gescheitert – die Gesichtserkennung läuft NICHT an", und das wäre so
+geblieben, bis jemand die 18 Dateien aus dem Weg räumt.
+
+Gezählt und benannt werden sie weiterhin – in `verarbeitung_fehler`, in
+`verarbeitung.fehlgeschlagen` und im Bericht der Oberfläche. **Nicht
+durchgelaufen und still übergangen sind zwei verschiedene Dinge.**
+
+## Was der dritte Schritt tut – und was nicht
+
+Er sucht sich die Bilder mit `gesichter_am IS NULL`, also genau die, die noch
+nie angesehen wurden. Ein Bild, das schon Funde hat, wird nicht erneut
+untersucht; ein zweiter Lauf über denselben Bestand meldet „0 Bild(er) zu
+bearbeiten".
+
+**Er ordnet nichts zu.** Neue Funde landen im Gruppierungsschritt; wo sie an
+ein benanntes Häufchen passen, erscheinen sie in der Oberfläche als „N neu" und
+warten auf einen Menschen (Phase 9b). Der Grund steht im Auftrag und ist der
+wichtigste Satz daran: Ein Fund, der still der falschen Person zugeschlagen
+wird, ist nicht wiederzufinden – niemand hat die Zuordnung je gesehen.
+Gefährlich ist nicht die unsichere Erkennung, sondern die sichere und falsche.
+
+**Und er gruppiert nicht neu.** `--neu-gruppieren` bleibt ein Aufruf von Hand,
+weil er alle Ablage-Entscheidungen verwirft.
+
+## Der Fortschritt steht während der Arbeit da, nicht danach
+
+`ingest/gesichter.py` schreibt jetzt zusätzlich in `verarbeitung` – dieselbe
+Tabelle wie die beiden anderen Schritte, damit Anzeige, Restzeitrechnung,
+Sperre gegen einen zweiten Anstoß und das Aufräumen verwaister Zeilen für alle
+drei gelten. Die fachlichen Zahlen bleiben in `gesichtslauf`; `verarbeitung`
+verweist über `gesichtslauf_id` darauf (Migration 012), genau wie
+`ingest_lauf_id` beim Einlesen.
+
+Fortgeschrieben wird bei jedem Bild angeboten; wie oft wirklich geschrieben
+wird, entscheidet `TAKT` in `ingest/verarbeitung.py` – an einer Stelle, nicht
+in drei Schleifen mit drei verschiedenen Zahlen.
+
+## Unlesbare Ansichten werden gezählt, nicht verschwiegen
+
+Steht `vorschau_erzeugt` in der Datenbank, die Datei ist aber nicht zu lesen,
+war das bisher stillschweigend ein „keine Gesichter gefunden". Jetzt wird es
+gezählt, im Protokoll genannt und als `fehlgeschlagen` gebucht – das Bild gilt
+aber trotzdem als bearbeitet, sonst versuchte es jeder weitere Lauf bis in alle
+Ewigkeit erneut.

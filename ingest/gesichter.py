@@ -40,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from datenbank import verbindung  # noqa: E402
 import gruppieren  # noqa: E402
+import verarbeitung  # noqa: E402
 
 DATEN = Path("/data/kajoe_bilder")
 MODELLE = DATEN / "modelle" / "insightface"
@@ -148,9 +149,20 @@ def modell_laden():
     return app
 
 
-def erkennen(conn, app, lauf_id: int, grenze: int) -> tuple[int, int, float, float | None]:
-    """Unbearbeitete Bilder durch den Detektor. Gibt (bilder, gesichter,
-    sekunden_je_bild, temperatur_max) zurueck."""
+def erkennen(conn, app, lauf_id: int, grenze: int,
+             fortschritt: "verarbeitung.Lauf | None" = None,
+             ) -> tuple[int, int, float, float | None, int]:
+    """Unbearbeitete Bilder durch den Detektor.
+
+    Gibt (bilder, gesichter, sekunden_je_bild, temperatur_max, unlesbar)
+    zurueck.
+
+    `fortschritt` ist die Zeile in `verarbeitung`, wenn der Schritt aus der
+    Kette kommt (Phase 10). Sie wird WAEHREND der Arbeit fortgeschrieben, nicht
+    erst am Ende: bei einem Schwung von zwanzigtausend Bildern stuende die
+    Anzeige sonst stundenlang still, und niemand koennte unterscheiden, ob der
+    Lauf arbeitet oder haengt.
+    """
     import cv2
 
     with conn.cursor() as cur:
@@ -168,17 +180,29 @@ def erkennen(conn, app, lauf_id: int, grenze: int) -> tuple[int, int, float, flo
         bilder = cur.fetchall()
         cur.execute("UPDATE gesichtslauf SET bilder_geplant = %s WHERE id = %s",
                     (len(bilder), lauf_id))
+    if fortschritt is not None:
+        fortschritt.gesamt = len(bilder)
+        fortschritt.takt(0, erzwingen=True)
 
     print(f"{len(bilder)} Bild(er) zu bearbeiten")
     t_start = time.time()
     gesichter_gesamt = 0
+    unlesbar = 0
     temp_max: float | None = None
 
     for n, (bild_id, jahr, monat, sha256) in enumerate(bilder, start=1):
         pfad = ansichtspfad(jahr, monat, sha256)
         img = cv2.imread(str(pfad))
         funde = []
-        if img is not None:
+        if img is None:
+            # `vorschau_erzeugt` steht in der Datenbank, die Datei ist aber
+            # nicht zu lesen. Das ist kein "keine Gesichter gefunden", und es
+            # soll auch nicht so aussehen. Gezaehlt und gemeldet – aber
+            # trotzdem als bearbeitet vermerkt, sonst versuchte es jeder
+            # weitere Lauf bis in alle Ewigkeit erneut.
+            unlesbar += 1
+            print(f"    NICHT LESBAR: {pfad}", flush=True)
+        else:
             for f in app.get(img):
                 x1, y1, x2, y2 = (int(round(v)) for v in f.bbox)
                 x1, y1 = max(0, x1), max(0, y1)
@@ -216,6 +240,13 @@ def erkennen(conn, app, lauf_id: int, grenze: int) -> tuple[int, int, float, flo
                 )
         gesichter_gesamt += len(funde)
 
+        # Der Kettenfortschritt wird bei JEDEM Bild angeboten; `takt` schreibt
+        # selbst nur alle hundert. So bleibt die Entscheidung, wie oft
+        # geschrieben wird, an einer Stelle (ingest/verarbeitung.py) und nicht
+        # in drei Schleifen mit drei verschiedenen Zahlen.
+        if fortschritt is not None:
+            fortschritt.takt(n)
+
         if n % 100 == 0 or n == len(bilder):
             t = temperatur()
             if t is not None:
@@ -235,7 +266,11 @@ def erkennen(conn, app, lauf_id: int, grenze: int) -> tuple[int, int, float, flo
                   f"{'%.0f °C' % t if t is not None else ''}  RSS {rss_mb():.0f} MB")
 
     je = (time.time() - t_start) / len(bilder) if bilder else 0.0
-    return len(bilder), gesichter_gesamt, je, temp_max
+    if fortschritt is not None:
+        fortschritt.takt(len(bilder), erzwingen=True)
+    if unlesbar:
+        print(f"  ACHTUNG: {unlesbar} Ansichtsdatei(en) waren nicht zu lesen")
+    return len(bilder), gesichter_gesamt, je, temp_max, unlesbar
 
 
 # ---------------------------------------------------------------------------
@@ -468,9 +503,14 @@ def bericht(conn, lauf_id: int | None, belege: int = 20) -> str:
     zeilen: list[str] = []
     p = zeilen.append
     with conn.cursor() as cur:
+        # Beide Zahlen ueber DIESELBE Menge – sonst steht dort "37.770 von
+        # 37.091", weil der Zaehler vorgemerkt geloeschte Bilder mitnimmt und
+        # der Nenner nicht. Eine Zahl, die groesser ist als ihr Bezugswert,
+        # laesst den ganzen Bericht zweifelhaft aussehen.
         cur.execute("""SELECT count(*) FILTER (WHERE gesichter_am IS NOT NULL),
-                              count(*) FILTER (WHERE typ='bild' AND geloescht_am IS NULL AND vorschau_erzeugt)
-                         FROM bild""")
+                              count(*)
+                         FROM bild
+                        WHERE typ='bild' AND geloescht_am IS NULL AND vorschau_erzeugt""")
         bearbeitet, gesamt_bilder = cur.fetchone()
         cur.execute("""SELECT count(*), count(*) FILTER (WHERE gruppe_id IS NOT NULL),
                               count(DISTINCT bild_id)
@@ -600,6 +640,8 @@ def main() -> int:
                    help="ALLE Haeufchen verwerfen und neu bilden (person_id bleibt)")
     p.add_argument("--nur-bericht", action="store_true")
     p.add_argument("--belege", type=int, default=20)
+    p.add_argument("--angestossen-von", type=int, default=None,
+                   help="Benutzernummer, wenn aus der Oberflaeche angestossen")
     args = p.parse_args()
 
     with verbindung(autocommit=True) as conn:
@@ -607,6 +649,16 @@ def main() -> int:
             print(bericht(conn, None, args.belege))
             print(f"\n{blaetter(conn, args.belege)} Blatt/Blaetter in {BELEGE}")
             return 0
+
+        # Dieselbe Sperre wie bei den beiden anderen Schritten der Kette: es
+        # laeuft immer nur einer. Der Riegel steht in der Datenbank und nicht
+        # nur im flock von tools/gesichter.sh, damit auch ein Anstoss aus der
+        # Oberflaeche daran haengt.
+        schon = verarbeitung.laeuft_schon(conn)
+        if schon:
+            print(f"FEHLER: es laeuft bereits ein Vorgang "
+                  f"(Nr. {schon[0]}, {schon[1]}).", file=sys.stderr)
+            return 2
 
         with conn.cursor() as cur:
             cur.execute("SELECT id::int FROM gesichtslauf WHERE zustand = 'laeuft' "
@@ -630,13 +682,22 @@ def main() -> int:
             lauf_id = cur.fetchone()[0]
         print(f"Lauf Nr. {lauf_id} auf {socket.gethostname()}, {MODELL}")
 
+        # Der Fortschritt fuer die Kette und die Oberflaeche. Dieselbe Tabelle
+        # wie beim Einlesen und Ableiten – siehe Migration 012.
+        fortschritt = verarbeitung.beginne("gesichter", 0, args.angestossen_von, conn)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE verarbeitung SET gesichtslauf_id = %s WHERE id = %s",
+                        (lauf_id, fortschritt.id))
+
         try:
             temp = None
+            n_bilder = n_gesichter = unlesbar = 0
             if not args.nur_gruppieren and not args.neu_gruppieren:
                 t0 = time.time()
                 app = modell_laden()
                 print(f"Modell geladen in {time.time()-t0:.1f} s, RSS {rss_mb():.0f} MB")
-                n_bilder, n_gesichter, je, temp = erkennen(conn, app, lauf_id, args.grenze)
+                n_bilder, n_gesichter, je, temp, unlesbar = erkennen(
+                    conn, app, lauf_id, args.grenze, fortschritt)
                 print(f"erkannt: {n_bilder} Bilder, {n_gesichter} Gesichter, "
                       f"{je*1000:.0f} ms/Bild, max {temp} °C")
 
@@ -651,15 +712,46 @@ def main() -> int:
                         WHERE id=%s""",
                     (tauglich_n, gruppen_neu, zugeordnet, lauf_id),
                 )
+            # Der Schritt ordnet NICHTS zu. Neue Funde landen im
+            # Gruppierungsschritt; wo sie an ein benanntes Haeufchen passen,
+            # stehen sie dort als "N neu" und warten auf einen Menschen. Ein
+            # Fund, der still der falschen Person zugeschlagen wird, ist nicht
+            # wiederzufinden – niemand hat die Zuordnung je gesehen.
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT count(*) FROM gesicht g
+                         JOIN bild b ON b.id = g.bild_id
+                        WHERE g.person_id IS NULL AND g.ausgenommen_am IS NULL
+                          AND b.geloescht_am IS NULL AND g.gruppe_id IN (
+                            SELECT gruppe_id FROM gesicht
+                             WHERE person_id IS NOT NULL AND ausgenommen_am IS NULL)""")
+                wartend = cur.fetchone()[0]
+
+            fortschritt.beende(
+                "fertig" if not unlesbar else "fehler",
+                f"{wartend} Fund(e) warten bei benannten Personen auf Uebernahme"
+                if wartend else None,
+                erzeugt=n_gesichter, uebersprungen=0, fehlgeschlagen=unlesbar,
+            )
+
             print()
             print(bericht(conn, lauf_id, args.belege))
+            if wartend:
+                print(f"\n  ACHTUNG: {wartend} Fund(e) sind bei bereits benannten Personen")
+                print("           dazugekommen und warten auf Uebernahme.")
+                print("           In der Oberflaeche unter /haeufchen/benannt.")
             print(f"\n{blaetter(conn, args.belege)} Blatt/Blaetter in {BELEGE}")
             print(f"RSS max {rss_mb():.0f} MB")
+            # 3 wie bei ableiten.py: durchgelaufen, einzelne Dateien nicht
+            # lesbar. Kein gescheiterter Schritt.
+            if unlesbar:
+                return 3
         except BaseException as fehler:
             with conn.cursor() as cur:
                 cur.execute("UPDATE gesichtslauf SET zustand='abgebrochen', beendet_am=now(), "
                             "bemerkung=%s WHERE id=%s",
                             (f"{type(fehler).__name__}: {str(fehler)[:200]}", lauf_id))
+            fortschritt.beende("fehler", f"{type(fehler).__name__}: {str(fehler)[:200]}")
             raise
     return 0
 

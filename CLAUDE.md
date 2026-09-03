@@ -116,7 +116,8 @@ falsch geworden ist.
 | – | Nachträge: Plattenumzug, Bildschirmfotos als Herkunft | **fertig** |
 | 9a | Gesichter finden und gruppieren, ohne Oberfläche | **fertig** |
 | 9b | Benennen und Suchen nach Personen | **fertig** |
-| 10 | Cloudflare Tunnel | offen |
+| 10 | Verarbeitungskette schließen: ein Knopf, drei Schritte | **fertig** |
+| 11 | Cloudflare Tunnel | offen |
 
 Die Nummern folgen den Auftragsdateien in `docs/`. Gegenüber der ursprünglichen
 Planung ist eine Phase dazugekommen – das Anstoßen der Verarbeitung aus der
@@ -567,6 +568,34 @@ Vorgang, den es nicht gibt, und die Verarbeitung ist tot.
 Deshalb steht in `verarbeitung.boot_kennung` die Kennung des Systemstarts
 (`/proc/sys/kernel/random/boot_id`, Migration 008). Weicht sie ab, ist der
 Prozess mit Sicherheit weg, und die Nummer wird gar nicht erst befragt.
+
+### Ein gescheiterter Schritt ist etwas anderes als eine gescheiterte Datei
+
+Seit Phase 10 hängen drei Schritte aneinander: einlesen → ableiten → Gesichter.
+Schlägt ein **Schritt** fehl, laufen die folgenden nicht an. Einzelne
+gescheiterte **Dateien** halten die Kette dagegen nicht auf.
+
+Der Unterschied ist nicht theoretisch. `ingest/ableiten.py` gab bis dahin `1`
+zurück, sobald irgendeine Datei fehlschlug – und im Bestand liegen **18
+abgeschnittene JPEGs von Oktober bis Dezember 2020** (1,6 MB, alle
+`ohne_exif`), die kein Ableiten je erzeugen wird. Beim ersten Kettenlauf mit
+drei Schritten war die Folge sofort sichtbar: Schritt 2 meldete Fehlschlag,
+Schritt 3 lief nicht an – und hätte es nie wieder getan. Dazu stünde
+`kajoe-verarbeiten` nach jedem Lauf auf `failed`, also genau der Zustand, der
+eine Zustandsanzeige wertlos macht.
+
+Deshalb gibt es jetzt drei Rückgabewerte, und zwar in beiden Python-Schritten:
+
+| Wert | Bedeutung | Kette |
+|---|---|---|
+| `0` | sauber durchgelaufen | weiter |
+| `3` | durchgelaufen, **einzelne Dateien** gescheitert | weiter, mit Meldung |
+| alles andere | der **Schritt** ist gescheitert | Abbruch |
+
+Sichtbar bleiben die Fehlschläge trotzdem – namentlich in
+`verarbeitung_fehler`, gezählt in `verarbeitung.fehlgeschlagen` und im Bericht
+der Oberfläche. **Nicht durchgelaufen und still übergangen sind zwei
+verschiedene Dinge**, und nur das zweite ist verboten.
 
 ### Sicherung
 

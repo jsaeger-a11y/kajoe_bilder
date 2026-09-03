@@ -286,7 +286,8 @@ zweistufig, mit 30 Tagen Frist. Bilder in einer Auswahlliste bleiben verschont.
 | – | Nachträge: Plattenumzug, Bildschirmfotos als Herkunft | fertig |
 | 9a | Gesichter finden und gruppieren, ohne Oberfläche | fertig |
 | 9b | Benennen und Suchen nach Personen | fertig |
-| 10 | Cloudflare Tunnel | offen |
+| 10 | Verarbeitungskette schließen: ein Knopf, drei Schritte | fertig |
+| 11 | Cloudflare Tunnel | offen |
 
 ---
 

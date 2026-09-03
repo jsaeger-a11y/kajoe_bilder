@@ -173,7 +173,20 @@ def main() -> int:
             print(f"  {pfad}  {text}")
         if len(fehler) > 50:
             print(f"  … und {len(fehler)-50} weitere")
-    return 1 if fehler else 0
+    # 3 heisst: der Schritt ist DURCHGELAUFEN, einzelne Dateien sind
+    # gescheitert. Das ist etwas anderes als ein gescheiterter Schritt, und
+    # seit Phase 10 haengt ein dritter Schritt daran.
+    #
+    # Der Unterschied ist nicht theoretisch: in diesem Bestand liegen 18
+    # abgeschnittene JPEGs aus 2020, die sich nicht ableiten lassen und es nie
+    # werden. Mit einer 1 waere JEDER Lauf gescheitert, die Gesichtserkennung
+    # liefe nie wieder an, und der Dienst stuende dauerhaft auf `failed` – der
+    # Zustand, vor dem CLAUDE.md ausdruecklich warnt.
+    #
+    # Sichtbar bleiben die Fehlschlaege trotzdem: namentlich in
+    # `verarbeitung_fehler`, gezaehlt in `verarbeitung.fehlgeschlagen` und im
+    # Bericht der Oberflaeche.
+    return 3 if fehler else 0
 
 
 if __name__ == "__main__":

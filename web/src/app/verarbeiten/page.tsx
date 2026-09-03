@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { gb } from "@/lib/bestand";
+import { zahlen as personenzahlen } from "@/lib/personen";
+import { sichtVon } from "@/lib/sichtbar";
 import {
-  dauertext, eingangZustand, fehlerDesLaufs, laufend, letzteLaeufe,
+  dauerSchaetzung, dauertext, eingangZustand, fehlerDesLaufs, laufend, letzteLaeufe,
   quarantaeneDesLaufs, tempo, uebertragungLaeuftVermutlich, wartetAufStart,
 } from "@/lib/verarbeitung";
 import { verlangeVerwalter } from "@/lib/zugriff";
@@ -27,9 +30,13 @@ export default async function Verarbeiten() {
   // Nur Verwalter, und das steht IN der Seite.
   const wer = await verlangeVerwalter();
 
-  const [eingang, aktiv, wartet, laeufe] = await Promise.all([
+  const [eingang, aktiv, wartet, laeufe, personen] = await Promise.all([
     eingangZustand(), laufend(), wartetAufStart(), letzteLaeufe(8),
+    // Wie viele Funde bei benannten Personen auf ein Ja warten. Ein Verwalter
+    // sieht ohnehin alles, deshalb genuegt seine eigene Sicht.
+    personenzahlen(sichtVon(wer)),
   ]);
+  const schaetzung = dauerSchaetzung(eingang);
 
   const warnung = uebertragungLaeuftVermutlich(eingang);
   const t = aktiv ? await tempo(aktiv.id, aktiv.gesamt, aktiv.erledigt) : null;
@@ -131,11 +138,56 @@ export default async function Verarbeiten() {
         <div className="paket">
           <h2>Verarbeitung starten</h2>
           <p>
-            Erst einlesen, dann ableiten. Schlägt das Einlesen fehl, läuft das Ableiten
-            nicht an. Bei {eingang.anzahl.toLocaleString("de-DE")} Dateien dauert das
-            eine Weile – der Lauf hängt nicht am Browser.
+            Drei Schritte nacheinander: <strong>einlesen</strong>,{" "}
+            <strong>ableiten</strong>, <strong>Gesichter</strong>. Schlägt einer fehl,
+            laufen die folgenden nicht an. Der Lauf hängt nicht am Browser – Fenster
+            schließen ist in Ordnung.
+          </p>
+          {/*
+            Die Schätzung ist kein Versprechen. Sie steht hier, damit niemand
+            einen Knopf drückt, der zwei Minuten dauern soll und drei Stunden
+            läuft. Die Werte stehen an einer Stelle (DAUER_JE_DATEI_MS) und sind
+            an diesem Bestand gemessen.
+          */}
+          <p>
+            Grobe Schätzung: <strong>etwa {dauertext(schaetzung.gesamtSekunden)}</strong>{" "}
+            <span className="leise">
+              (einlesen {dauertext(schaetzung.einlesenSekunden)}, ableiten{" "}
+              {dauertext(schaetzung.ableitenSekunden)}, Gesichter{" "}
+              {dauertext(schaetzung.gesichterSekunden)} für{" "}
+              {eingang.bilder.toLocaleString("de-DE")} Bilder, dazu{" "}
+              {dauertext(schaetzung.vorlaufSekunden)} fester Vorlauf)
+            </span>
+          </p>
+          <p className="leise">
+            Gerechnet aus gemessenen Mittelwerten dieses Bestands – kein Versprechen.
+            Große Videos dauern länger, ein Bild ohne Gesichter geht schneller.
           </p>
           <Anstossknopf anzahl={eingang.anzahl} warnung={warnung} />
+        </div>
+      ) : null}
+
+      {/*
+        Der Hinweis, der sonst niemandem auffiele: der Knopf ist gedrückt, der
+        Lauf ist durch, und die sieben neuen Gesichter an "Oma" warten still.
+        Der Gesichtsschritt ordnet mit Absicht nichts zu – ein Fund, der still
+        der falschen Person zugeschlagen wird, ist nicht wiederzufinden, weil
+        niemand die Zuordnung je gesehen hat.
+      */}
+      {personen.neue > 0 ? (
+        <div className="paket">
+          <h2>Es warten {personen.neue.toLocaleString("de-DE")} Funde auf ein Ja</h2>
+          <p>
+            Bei bereits benannten Personen sind neue Gesichter dazugekommen. Die
+            Verarbeitung ordnet sie <strong>nicht</strong> von selbst zu – das bleibt eine
+            menschliche Entscheidung. Bis dahin fehlen diese Aufnahmen in der Galerie
+            unter der jeweiligen Person.
+          </p>
+          <p>
+            <Link className="marke-filter" href="/haeufchen/benannt">
+              Zu den benannten Häufchen
+            </Link>
+          </p>
         </div>
       ) : null}
 
@@ -171,6 +223,16 @@ export default async function Verarbeiten() {
                         gefunden {l.gefunden ?? 0}, übernommen {l.uebernommen ?? 0},
                         Dubletten {l.dubletten ?? 0}, Quarantäne {l.quarantaene ?? 0},
                         übersprungen {l.ingest_uebersprungen ?? 0}
+                      </>
+                    ) : l.schritt === "gesichter" ? (
+                      <>
+                        {(l.g_bilder ?? 0).toLocaleString("de-DE")} Bilder untersucht,{" "}
+                        {(l.g_gesichter ?? 0).toLocaleString("de-DE")} Funde, davon{" "}
+                        {(l.g_tauglich ?? 0).toLocaleString("de-DE")} tauglich; {" "}
+                        {l.g_gruppen_neu ?? 0} neue Häufchen,{" "}
+                        {(l.g_zugeordnet ?? 0).toLocaleString("de-DE")} an bestehende
+                        angehängt
+                        {l.fehlgeschlagen > 0 ? `, ${l.fehlgeschlagen} nicht lesbar` : ""}
                       </>
                     ) : (
                       <>
@@ -216,9 +278,11 @@ export default async function Verarbeiten() {
       ) : null}
 
       <p className="leise">
-        Ohne Oberfläche geht es genauso: <code>tools/einlesen.sh</code> und{" "}
-        <code>tools/ableiten.sh</code> bleiben von Hand aufrufbar, und{" "}
-        <code>tools/verarbeiten.sh</code> macht beides nacheinander.
+        Ohne Oberfläche geht es genauso: <code>tools/einlesen.sh</code>,{" "}
+        <code>tools/ableiten.sh</code> und <code>tools/gesichter.sh</code> bleiben
+        einzeln von Hand aufrufbar, und <code>tools/verarbeiten.sh</code> macht alle
+        drei nacheinander. Wenn dieser Dienst nicht läuft, hängt die Verarbeitung
+        nicht davon ab.
       </p>
     </main>
   );

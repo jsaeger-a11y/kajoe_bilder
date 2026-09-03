@@ -34,14 +34,97 @@ const TEMPO_FENSTER_SEKUNDEN = 120;
 export interface Eingang {
   anzahl: number;
   bytes: number;
+  /** Davon vermutlich Bilder – nur die bekommen einen Gesichtsdurchlauf. */
+  bilder: number;
   juengsteSekunden: number | null;
   filepartAnzahl: number;
   beispiele: string[];
 }
 
+/**
+ * Endungen, die hier als Video gelten – **nur fuer die Dauerschaetzung.**
+ *
+ * Die massgebliche Liste steht in `ingest/einordnen.py` (`VIDEOTYPEN`) und
+ * entscheidet, was tatsaechlich wie behandelt wird. Diese hier entscheidet
+ * gar nichts: sie verschiebt eine Zahl, die daneben ausdruecklich als grobe
+ * Schaetzung steht. Laufen die beiden Listen auseinander, ist die Schaetzung
+ * etwas schiefer – mehr passiert nicht.
+ */
+const VIDEOENDUNGEN = new Set([
+  "mov", "mp4", "m4v", "avi", "3gp", "mpeg", "mkv", "webm",
+]);
+
+/**
+ * Grobe Dauerwerte je Datei, in Millisekunden – an EINER Stelle.
+ *
+ * **Gemessen an diesem Bestand und dieser Maschine**, nicht geschaetzt:
+ *
+ * | Schritt | Messung | woraus |
+ * |---|---|---|
+ * | einlesen | 27 ms je Datei | 36.714 Dateien in 16 min 26 s |
+ * | ableiten | 254 ms je Datei | 30.696 Dateien in 2 h 10 min (Bilder und Videos gemischt) |
+ * | gesichter | 314 ms je Bild | 32.410 Bilder in 2 h 50 min |
+ *
+ * Der Wert fuers Ableiten ist ein Mittel ueber Bilder UND Videos – genau so,
+ * wie er gemessen wurde, also wird er auch auf alle Dateien angewandt. Der
+ * Gesichtswert gilt nur fuer Bilder: Videos sieht der Schritt nicht an.
+ */
+export const DAUER_JE_DATEI_MS = {
+  einlesen: 27,
+  ableiten: 254,
+  gesichter: 314,
+} as const;
+
+/**
+ * Fester Vorlauf, unabhaengig von der Zahl der Dateien – in Sekunden.
+ *
+ * Drei Prozessstarts, das Laden des Modells (rund 1,5 s), ein Durchgang des
+ * Ableitens ueber alle Zeilen (rund 2 s bei 41.000) und vor allem das
+ * **Gruppieren ueber den gesamten Fundbestand** (rund 8 s bei 30.700 Funden).
+ * Das faellt an, ob zwanzig Dateien dazukommen oder zwanzigtausend.
+ *
+ * Gemessen: ein Lauf ueber 20 Dateien dauerte 24 s, wovon 12 s auf die Dateien
+ * entfielen. Ohne diesen Posten sagte die Schaetzung 12 s und es wurden 24 –
+ * bei einem kleinen Schwung ist der Vorlauf die halbe Zeit.
+ *
+ * Er waechst mit dem ARCHIV, nicht mit dem Schwung, und ist deshalb hier eine
+ * grobe Zahl und keine Rechnung.
+ */
+export const VORLAUF_SEKUNDEN = 20;
+
+export interface Schaetzung {
+  einlesenSekunden: number;
+  ableitenSekunden: number;
+  gesichterSekunden: number;
+  vorlaufSekunden: number;
+  gesamtSekunden: number;
+}
+
+/**
+ * Wie lange dauert das ungefaehr?
+ *
+ * **Kein Versprechen.** Der Zweck ist ein anderer: niemand soll einen Knopf
+ * druecken, der zwei Minuten dauern soll und drei Stunden laeuft. Deshalb
+ * steht die Zahl vor dem Anstossen und ist als grob gekennzeichnet.
+ */
+export function dauerSchaetzung(e: Eingang): Schaetzung {
+  const einlesenSekunden = (e.anzahl * DAUER_JE_DATEI_MS.einlesen) / 1000;
+  const ableitenSekunden = (e.anzahl * DAUER_JE_DATEI_MS.ableiten) / 1000;
+  const gesichterSekunden = (e.bilder * DAUER_JE_DATEI_MS.gesichter) / 1000;
+  return {
+    einlesenSekunden,
+    ableitenSekunden,
+    gesichterSekunden,
+    vorlaufSekunden: VORLAUF_SEKUNDEN,
+    gesamtSekunden:
+      einlesenSekunden + ableitenSekunden + gesichterSekunden + VORLAUF_SEKUNDEN,
+  };
+}
+
 export async function eingangZustand(): Promise<Eingang> {
   let anzahl = 0;
   let bytes = 0;
+  let bilder = 0;
   let juengste = 0;
   let filepartAnzahl = 0;
   const beispiele: string[] = [];
@@ -74,6 +157,8 @@ export async function eingangZustand(): Promise<Eingang> {
         const a = await stat(pfad);
         anzahl += 1;
         bytes += a.size;
+        const endung = e.name.split(".").pop()?.toLowerCase() ?? "";
+        if (!VIDEOENDUNGEN.has(endung)) bilder += 1;
         if (a.mtimeMs > juengste) juengste = a.mtimeMs;
         if (beispiele.length < 5) beispiele.push(pfad.slice(EINGANG.length + 1));
       } catch {
@@ -85,6 +170,7 @@ export async function eingangZustand(): Promise<Eingang> {
   return {
     anzahl,
     bytes,
+    bilder,
     juengsteSekunden: juengste ? Math.round((Date.now() - juengste) / 1000) : null,
     filepartAnzahl,
     beispiele,
@@ -306,6 +392,12 @@ export interface Bericht {
   quarantaene: number | null;
   ingest_uebersprungen: number | null;
   ingest_lauf_id: number | null;
+  // aus gesichtslauf (Phase 10) – die fachlichen Zahlen des dritten Schritts
+  g_bilder: number | null;
+  g_gesichter: number | null;
+  g_tauglich: number | null;
+  g_gruppen_neu: number | null;
+  g_zugeordnet: number | null;
 }
 
 export async function letzteLaeufe(wieviele = 10): Promise<Bericht[]> {
@@ -315,10 +407,14 @@ export async function letzteLaeufe(wieviele = 10): Promise<Bericht[]> {
             v.bemerkung, b.benutzername,
             i.gefunden, i.uebernommen, i.dubletten, i.quarantaene,
             i.uebersprungen AS ingest_uebersprungen,
-            v.ingest_lauf_id::int AS ingest_lauf_id
+            v.ingest_lauf_id::int AS ingest_lauf_id,
+            g.bilder AS g_bilder, g.gesichter AS g_gesichter,
+            g.tauglich AS g_tauglich, g.gruppen_neu AS g_gruppen_neu,
+            g.zugeordnet AS g_zugeordnet
        FROM verarbeitung v
-       LEFT JOIN benutzer b    ON b.id = v.angestossen_von
-       LEFT JOIN ingest_lauf i ON i.id = v.ingest_lauf_id
+       LEFT JOIN benutzer b     ON b.id = v.angestossen_von
+       LEFT JOIN ingest_lauf i  ON i.id = v.ingest_lauf_id
+       LEFT JOIN gesichtslauf g ON g.id = v.gesichtslauf_id
       ORDER BY v.begonnen_am DESC LIMIT $1`,
     [wieviele],
   );
