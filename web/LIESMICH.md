@@ -1351,3 +1351,124 @@ vorhandene Funde, die die Läufe an benannte Häufchen angehängt haben und die
 nun auf eine Bestätigung warten. Das ist kein Rückstand aus der Prüfung,
 sondern das, was jeder Lauf tut – die Mittelvektoren rücken nach, und Funde,
 die vorher knapp unter der Schwelle lagen, kommen darüber.
+
+---
+
+# Die Filter als Klapplisten
+
+Sechs Achsen – Jahr, Monat, Herkunft, Typ, Person, Ort – stehen nicht mehr als
+sechs Zeilen voller Werte da, sondern als sechs Klappen. Dieselbe Leiste in der
+Galerie und auf der Karte.
+
+## Was das Zuklappen aufs Spiel setzt
+
+In `CLAUDE.md` steht seit Phase 2b: die Vorgabe ist `iphone`, **und es muss
+sichtbar sein, dass gefiltert wird.** Eine Klappe, an der nur „Herkunft" steht,
+wäre genau der stille Filter, vor dem dieser Satz warnt.
+
+Deshalb drei Dinge, die zusammengehören:
+
+1. **Die geschlossene Klappe nennt den Wert**, nicht die Achse: „Herkunft:
+   iPhone", „Jahr: 2022, 2023, 2025", bei mehr als drei „Jahr: 4 gewählt".
+2. **Eine eingeschränkte Achse trägt ein Kennzeichen** – Punkt und Rahmen in
+   der Betonungsfarbe. Nicht nur der Text: bei sechs Klappen nebeneinander
+   liest niemand jeden Wert, und der Punkt fällt auch dem auf, der Farben
+   schlecht unterscheidet.
+3. **Zwei Wege zurück**, die verschiedene Dinge tun und darum verschieden
+   heißen:
+
+   | Verweis | wohin |
+   |---|---|
+   | „Herkunft: alles zeigen" (in der offenen Klappe) | hebt **diese** Achse auf |
+   | „alles zeigen" (über den Klappen) | hebt **jede** Einschränkung auf, auch die Vorgabe |
+   | „alle Filter zurücksetzen" | führt auf die **Vorgabe** aus CLAUDE.md, also `herkunft=iphone` |
+
+   Der dritte erscheint nur, wenn überhaupt etwas von der Vorgabe abweicht.
+
+## Nur eine Klappe offen – ohne eine Zeile JavaScript
+
+`<details name="filterklappe">`. Das `name`-Merkmal macht die Klappen
+gegenseitig ausschließend; öffnet man die zweite, schließt der Browser die
+erste. Sechs offene Klappen wären wieder die alte Zeile, nur höher.
+
+**Ob eine Klappe offen ist, steht bewusst nicht in der Adresse.** Der
+Filterzustand gehört dorthin, weil eine Ansicht wiederzufinden sein muss und
+der Zurück-Knopf tun soll, was er verspricht. Ob jemand gerade eine Liste
+aufgeklappt hat, geht beim Weiterklicken verloren – und soll es auch.
+
+## Die Auswahl bleibt ein Verweis, auch in der Klappe
+
+Kästchen wären naheliegend und sind es nicht: was in der Adresse steht,
+überlebt jedes Blättern, und React setzt bei einem Kästchen nur das Attribut,
+nicht die tatsächliche Ankreuzung – die `defaultChecked`-Falle, die in diesem
+Projekt zweimal zugeschlagen hat.
+
+Ein einziges Client-Bauteil gibt es: `personenklappe.tsx`. Vierzig Namen sind
+zu viele zum Durchsehen, deshalb ein Feld, das die Liste kürzt, während man
+tippt. Die Ziele der Verweise rechnet trotzdem der Server aus – `filterlink()`
+liegt in einem `server-only`-Modul und hat im Browser nichts zu suchen. Das
+Feld ist ein gesteuertes Eingabefeld (`value` + `onChange`), kein
+`defaultValue`; die Falle greift dort nicht.
+
+## Eine Beschriftung, zwei Verwender
+
+`achsentexte(filter, personen)` in `filterleiste.tsx` sagt für jede Achse, was
+drangeschrieben wird und ob sie einschränkt. Benutzt wird das von den Klappen
+**und** von der zugeklappten Leiste auf der Karte. Zwei Fassungen liefen früher
+oder später auseinander, und dann behauptete die Zusammenfassung etwas anderes
+als die Klappe darunter.
+
+**Auf der Karte bleibt die Leiste zugeklappt.** Sechs Klappen brauchen auf
+einem Telefon drei Zeilen, und dann bleibt vom Schirm für die Karte selbst
+nichts übrig – der Grund, aus dem dort schon vorher eine Klappe darum lag. Die
+Ortsachse entfällt auf der Karte ganz: „ohne Ort" ist dort nicht
+einschränkend, sondern leer.
+
+## Der Kartenausschnitt ist keine Klappliste
+
+Er lässt sich nicht auswählen – er kommt von der Karte. Er steht als eigener
+Hinweis auf der Galerieseite, mit „Ausschnitt aufheben" und „zurück zur Karte",
+genau wie vorher.
+
+## Trefferzahlen je Person kosten 33 ms
+
+Neu ist `jePerson` in `trefferzahlen()`: Aufnahmen je benannter Person unter
+den übrigen Filtern, gezählt als `count(DISTINCT bild.id)` – zwei Gesichter
+derselben Person auf einem Bild sind eine Aufnahme. Die Abfrage läuft **nur**
+mit dem Recht `gesichter`; ohne das Recht gibt es die Klappe nicht, und dann
+soll auch die teuerste der fünf Zählabfragen nicht laufen.
+
+## Was geprüft wurde
+
+An der laufenden Anwendung, gegen das ausgelieferte Markup und die Datenbank:
+
+| Prüfung | Ergebnis |
+|---|---|
+| ohne Parameter | „Herkunft **iPhone**" mit Kennzeichen an der geschlossenen Klappe; Trefferzahl unverändert 29.423 von 40.946 |
+| alle sechs Achsen | `Jahr, Monat, Herkunft, Typ, Person, Ort` |
+| drei Jahre | „Jahr: 2022, 2023, 2025" |
+| vier Jahre | „Jahr: 4 gewählt" |
+| eingeschränkt gegen nicht | `class="klappe gesetzt"` gegen `class="klappe"` – der Unterschied steht schon im Markup, ohne die Klappe zu öffnen |
+| „alle Filter zurücksetzen" | führt auf `/galerie`, also auf die Vorgabe; auf der Vorgabe erscheint der Verweis gar nicht |
+| „alles zeigen" | führt auf `?herkunft=alle`, hebt also auch die Vorgabe auf |
+| alte Adresse `?jahr=2024&herkunft=fremd&typ=bild&ort=ohne&monat=7` | unverändert gültig, alle fünf Klappen richtig beschriftet |
+| zweiter Aufruf derselben Adresse | dieselbe Ansicht |
+| Konto, das nur 2024 darf | die Jahresliste enthält genau `2024` |
+| ohne Recht `gesichter` | fünf Klappen, keine Personenklappe; mit dem Recht sechs |
+| Kartenausschnitt gesetzt | steht als eigener Hinweis da, ist keine Klappe, „aufheben" und „zurück zur Karte" vorhanden |
+| Karte und Galerie, dieselbe Adresse | dieselben Klappen, dieselbe Beschriftung, **32 zu 32** – und 32 sagt auch die Datenbank |
+| Personenklappe | Suchfeld „Name suchen (40)", 40 Namen, absteigend nach Anzahl (Cosima 3.457, Nala_Amie_Coco 2.965, Katja 2.774 …) |
+| Ladezeiten | Galerie 0,06–0,07 s, Karte 0,07 s |
+
+**Zwei Dinge konnten von hier aus nicht geprüft werden**, weil dafür ein
+Browser nötig wäre:
+
+- **Dass die zweite Klappe die erste schließt.** Geprüft ist nur, dass alle
+  sechs `<details>` denselben `name` tragen – die Wirkung ist dann Sache des
+  Browsers. Unterstützt er das Merkmal nicht, bleiben mehrere Klappen offen;
+  kaputt ist damit nichts, es sieht nur aus wie vorher.
+- **Die Bedienung auf dem Telefon.** Verifiziert ist nur, was im Markup und im
+  Stylesheet steht: Tippziele mindestens 2,75 rem hoch, die offene Klappe nimmt
+  die volle Breite (`flex: 1 0 100%`), unter 34 rem füllt sie höchstens 60 %
+  der Schirmhöhe und rollt darin, das Suchfeld ist volle Breite. **Ob das
+  reicht, muss jemand am Gerät sagen.**

@@ -3,9 +3,10 @@ import Link from "next/link";
 
 import { filterAusSuche, suchtext, trefferzahlen, zeitraeume } from "@/lib/galerie";
 import { ZOOM_MAX, ZOOM_MIN, mitteAusSuche, ortszahlen, startbereich } from "@/lib/karte";
+import { personen } from "@/lib/personen";
 import { sichtVon } from "@/lib/sichtbar";
 import { verlangeRecht } from "@/lib/zugriff";
-import Filterleiste from "../galerie/filterleiste";
+import Filterleiste, { achsentexte } from "../galerie/filterleiste";
 import Kopf from "../kopf";
 import KeinJahr from "../keinjahr";
 import Ausschnittverweise from "./ausschnittverweise";
@@ -30,16 +31,23 @@ export default async function Karte({
   const filter = { ...filterAusSuche(suche), ort: "alle", seite: 1 };
 
   const sicht = sichtVon(wer);
-  const [zahlen, raeume, orte, bereich] = await Promise.all([
+  const [zahlen, raeume, orte, bereich, benannte] = await Promise.all([
     trefferzahlen(filter, sicht),
     zeitraeume(filter, sicht),
     ortszahlen(filter, sicht),
     startbereich(filter, sicht),
+    // Nur mit dem Recht `gesichter` – sonst gibt es die Klappe nicht.
+    sicht.gesichter ? personen(sicht) : Promise.resolve([]),
   ]);
 
   // Genau der Teil der Adresse, den die Karte an ihre Abfragen anhaengt:
   // dieselben Filter, die die Galerie versteht, ohne Ausschnitt.
   const filterabfrage = suchtext(filter).replace(/^\?/, "");
+
+  // Nur die Achsen, die wirklich einschraenken – "Ort" faellt auf der Karte
+  // ohnehin weg, dort ist "ohne Ort" nicht einschraenkend, sondern leer.
+  const gesetzt = achsentexte(filter, benannte.map((p) => ({ id: p.id, name: p.name })))
+    .filter((a) => a.gesetzt && a.achse !== "Ort");
   const anteilOhne = orte.gesamt ? Math.round((orte.ohneOrt / orte.gesamt) * 100) : 0;
 
   return (
@@ -47,22 +55,32 @@ export default async function Karte({
       <Kopf wer={wer} />
       <h1>Karte</h1>
 
+      {/*
+        Dieselbe Leiste wie in der Galerie – aber auf der Karte zugeklappt.
+        Sechs Klappen brauchen auf einem Telefon drei Zeilen, und dann bleibt
+        vom Schirm fuer die Karte selbst nichts uebrig. Die Zusammenfassung an
+        der Klappe nennt deshalb genau das, was die Klappen darunter auch
+        sagen: sie kommt aus derselben Funktion (`achsentexte`), nicht aus
+        einer zweiten Fassung.
+      */}
       <Ausschnittverweise>
         <details className="filterklappe">
           <summary>
-            Filter · {filter.herkunft === "alle" ? "alle Herkünfte" : filter.herkunft}
-            {filter.jahr.length ? ` · ${filter.jahr.join(", ")}` : ""}
-            {filter.typ !== "alle" ? ` · ${filter.typ}` : ""}
+            Filter
+            {gesetzt.length
+              ? gesetzt.map((a) => ` · ${a.achse}: ${a.wert}`).join("")
+              : " · keiner"}
           </summary>
-          <Filterleiste
-            filter={filter}
-            zahlen={zahlen}
-            treffer={orte.gesamt}
-            zeitraeume={raeume}
-            pfad="/karte"
-            ortszeile={false}
-            was="Aufnahmen im Filter"
-          />
+        <Filterleiste
+          filter={filter}
+          zahlen={zahlen}
+          treffer={orte.gesamt}
+          zeitraeume={raeume}
+          pfad="/karte"
+          ortszeile={false}
+          was="Aufnahmen im Filter"
+          personen={benannte.map((p) => ({ id: p.id, name: p.name }))}
+        />
         </details>
       </Ausschnittverweise>
 

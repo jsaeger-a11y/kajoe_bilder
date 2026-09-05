@@ -117,6 +117,7 @@ falsch geworden ist.
 | 9a | Gesichter finden und gruppieren, ohne Oberfläche | **fertig** |
 | 9b | Benennen und Suchen nach Personen | **fertig** |
 | 10 | Verarbeitungskette schließen: ein Knopf, drei Schritte | **fertig** |
+| – | Nachtrag: Filter der Galerie als Klapplisten | **fertig** |
 | 11 | Cloudflare Tunnel | offen |
 
 Die Nummern folgen den Auftragsdateien in `docs/`. Gegenüber der ursprünglichen
@@ -499,6 +500,13 @@ Durchgesetzt wird das in `web/src/lib/sichtbar.ts`, an **einer** Stelle, zusamme
 `geloescht_am IS NULL`. Der wichtigste Ort ist nicht die Galerie, sondern
 `/datei/…`: dort gehen die Bilder über die Leitung, und eine geratene Kennung darf
 kein Vorschaubild aus einem gesperrten Jahrgang liefern.
+
+**Die Filter stehen als Klapplisten da, und die geschlossene Klappe nennt den
+Wert.** „Herkunft: iPhone", nicht „Herkunft". Eine eingeschränkte Achse trägt
+zusätzlich ein Kennzeichen, das man ohne Öffnen sieht. Sonst wäre das Zuklappen genau
+der stille Filter, den der Absatz oben verbietet – und die Vorgabe `iphone` ist eine
+Einschränkung wie jede andere und wird auch so gekennzeichnet. Nur eine Klappe ist
+offen; das macht `<details name="…">`, nicht JavaScript.
 
 **Freischaltung und Filter sehen sich ähnlich und sind es nicht.** Die
 Freischaltung sagt, was jemand **darf**, der Filter, was er gerade **sehen

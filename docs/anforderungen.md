@@ -287,6 +287,7 @@ zweistufig, mit 30 Tagen Frist. Bilder in einer Auswahlliste bleiben verschont.
 | 9a | Gesichter finden und gruppieren, ohne Oberfläche | fertig |
 | 9b | Benennen und Suchen nach Personen | fertig |
 | 10 | Verarbeitungskette schließen: ein Knopf, drei Schritte | fertig |
+| – | Nachtrag: Filter der Galerie als Klapplisten | fertig |
 | 11 | Cloudflare Tunnel | offen |
 
 ---

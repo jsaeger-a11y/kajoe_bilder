@@ -30,6 +30,26 @@ export const HERKUENFTE = [
 ] as const;
 export const TYPEN = ["bild", "video"] as const;
 
+/**
+ * Anzeigenamen der Herkunft – an EINER Stelle.
+ *
+ * Die Werte in der Datenbank sind Kennungen (`apple_sonstig`), was an der
+ * geschlossenen Klappe schlecht aussieht und schlechter zu lesen ist. Der
+ * Filter selbst arbeitet weiter mit den Kennungen; das hier ist nur die
+ * Beschriftung.
+ */
+export const HERKUNFT_TEXT: Record<string, string> = {
+  iphone: "iPhone",
+  apple_sonstig: "Apple, kein iPhone",
+  fremd: "fremdes Gerät",
+  ohne_exif: "ohne Kameradaten",
+  screenshot: "Bildschirmfoto",
+};
+
+export function herkunftstext(wert: string): string {
+  return wert === "alle" ? "alle" : (HERKUNFT_TEXT[wert] ?? wert);
+}
+
 export interface Filter {
   /**
    * Mehrere Jahre gleichzeitig, aufsteigend und ohne Doppel. Leer heisst
@@ -317,12 +337,15 @@ export async function trefferzahlen(filter: Filter, sicht: Sicht): Promise<{
   jeHerkunft: Record<string, number>;
   jeTyp: Record<string, number>;
   jeOrt: Record<string, number>;
+  /** Aufnahmen je benannter Person – leer ohne das Recht `gesichter`. */
+  jePerson: Record<number, number>;
 }> {
   const ohneHerkunft = bedingung(filter, sicht, "herkunft");
   const ohneTyp = bedingung(filter, sicht, "typ");
   const ohneOrt = bedingung(filter, sicht, "ort");
+  const ohnePerson = bedingung(filter, sicht, "person");
 
-  const [h, t, o, g] = await Promise.all([
+  const [h, t, o, g, pers] = await Promise.all([
     abfrage<{ herkunft: string; anzahl: string }>(
       `SELECT herkunft, count(*) AS anzahl FROM bild WHERE ${ohneHerkunft.text} GROUP BY 1`,
       ohneHerkunft.werte,
@@ -346,6 +369,25 @@ export async function trefferzahlen(filter: Filter, sicht: Sicht): Promise<{
         alles.werte,
       );
     })(),
+    /*
+      Aufnahmen je Person, unter den uebrigen Filtern – wie bei allen anderen
+      Achsen. Gezaehlt werden AUFNAHMEN und nicht Funde: zwei Gesichter
+      derselben Person auf einem Bild sind eine Aufnahme.
+
+      Laeuft nur mit dem Recht `gesichter`. Ohne das Recht gibt es die Klappe
+      nicht, und die Abfrage soll dann auch nicht laufen – sie ist die
+      teuerste der fuenf.
+    */
+    sicht.gesichter
+      ? abfrage<{ person_id: number; anzahl: string }>(
+          `SELECT g.person_id::int AS person_id, count(DISTINCT bild.id) AS anzahl
+             FROM bild JOIN gesicht g ON g.bild_id = bild.id
+            WHERE ${ohnePerson.text}
+              AND g.person_id IS NOT NULL AND g.ausgenommen_am IS NULL
+            GROUP BY 1`,
+          ohnePerson.werte,
+        )
+      : Promise.resolve([]),
   ]);
 
   const zu = <S extends string>(zeilen: { anzahl: string }[], schluessel: S) =>
@@ -358,6 +400,7 @@ export async function trefferzahlen(filter: Filter, sicht: Sicht): Promise<{
     jeHerkunft: zu(h, "herkunft"),
     jeTyp: zu(t, "typ"),
     jeOrt: zu(o, "schluessel"),
+    jePerson: Object.fromEntries(pers.map((z) => [Number(z.person_id), Number(z.anzahl)])),
   };
 }
 

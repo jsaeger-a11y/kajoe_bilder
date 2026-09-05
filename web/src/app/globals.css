@@ -321,11 +321,71 @@ main.weit { max-width: 78rem; }
   border-radius: 4px; display: block; background: var(--rand);
 }
 
-/* Die Filterleiste ist auf der Karte zugeklappt – sonst bleibt vom Schirm
-   eines Telefons fuer die Karte selbst nichts uebrig. */
-.filterklappe > summary {
-  cursor: pointer; padding: .5rem 0; font-size: .9rem; color: var(--leise);
-  min-height: 2.5rem; display: flex; align-items: center;
+/* ---------------------------------------------------------------------------
+   Die Filterachsen als Klapplisten
+
+   Sechs Klappen nebeneinander: Jahr, Monat, Herkunft, Typ, Person, Ort. Die
+   geschlossene Klappe nennt den gewaehlten Wert, nicht nur die Achse – ein
+   stiller Filter laesst jemanden glauben, mehr sei nicht da.
+--------------------------------------------------------------------------- */
+
+.klappen { display: flex; flex-wrap: wrap; gap: .35rem; margin: .35rem 0; }
+
+.klappe > summary {
+  cursor: pointer; list-style: none;
+  display: inline-flex; align-items: baseline; gap: .4rem;
+  min-height: 2.75rem; padding: .4rem .75rem;
+  border: 1px solid var(--rand); border-radius: 999px;
+  background: var(--feld); font-size: .88rem; line-height: 1.2;
+}
+.klappe > summary::-webkit-details-marker { display: none; }
+.klappe > summary:focus-visible { outline: 3px solid var(--betont); outline-offset: 2px; }
+.klappe-achse { color: var(--leise); }
+.klappe-wert { font-weight: 600; }
+
+/*
+  Das Kennzeichen fuer "diese Achse schraenkt ein" – sichtbar OHNE die Klappe
+  zu oeffnen, und nicht nur ueber den Text: bei sechs Klappen nebeneinander
+  liest niemand jeden Wert. Rahmen und Punkt zusammen, damit es auch dann
+  auffaellt, wenn jemand Farben schlecht unterscheidet.
+*/
+.klappe.gesetzt > summary {
+  border-color: var(--betont); box-shadow: inset 0 0 0 1px var(--betont);
+}
+.klappe.gesetzt > summary::before {
+  content: "●"; color: var(--betont); font-size: .7em; line-height: 1;
+}
+.klappe.gesetzt .klappe-wert { color: var(--betont); }
+
+/*
+  Die offene Klappe nimmt eine ganze Zeile ein. Ohne das waere der Inhalt nur
+  so breit wie sein Knopf – auf dem Telefon eine Spalte aus vierzig Namen.
+*/
+.klappe[open] { flex: 1 0 100%; }
+.klappe[open] > summary { border-radius: 8px 8px 0 0; }
+.klappe-inhalt {
+  border: 1px solid var(--betont); border-top: none;
+  border-radius: 0 0 8px 8px; padding: .5rem .6rem;
+  background: var(--feld);
+}
+.klappe-inhalt .filterzeile { margin: 0; }
+.klappe-zurueck {
+  display: inline-block; margin-top: .5rem;
+  font-size: .85rem; color: var(--leise);
+}
+.klappe-suche {
+  width: 100%; margin-bottom: .5rem;
+  min-height: 2.75rem; padding: .5rem .7rem;
+  border: 1px solid var(--rand); border-radius: 6px;
+  background: var(--grund); color: var(--schrift); font: inherit; font-size: .9rem;
+}
+
+@media (max-width: 34rem) {
+  /* Auf dem Telefon darf die offene Liste den Schirm fuellen – genau das ist
+     der Gewinn gegenueber der alten Zeile. Gerollt wird innerhalb, damit die
+     Seite darunter erreichbar bleibt. */
+  .klappe-inhalt { max-height: 60vh; overflow-y: auto; }
+  .klappe > summary { flex: 1 1 auto; justify-content: center; }
 }
 
 /* Leaflet in den Farben der Seite – der Standard ist hell und blendet im

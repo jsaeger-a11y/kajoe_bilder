@@ -90,7 +90,7 @@ export default async function Galerie({
       <h1>Galerie</h1>
 
       <Filterleiste filter={filter} zahlen={zahlen} treffer={treffer} zeitraeume={raeume}
-                    personen={benannte.map((p) => ({ id: p.id, name: p.name, aufnahmen: p.aufnahmen }))} />
+                    personen={benannte.map((p) => ({ id: p.id, name: p.name }))} />
 
       {/*
         Dass ein Kartenausschnitt filtert, muss dastehen. Sonst sucht jemand
